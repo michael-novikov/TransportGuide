@@ -10,55 +10,15 @@
 #include <memory>
 #include <variant>
 
-enum class InCommandType {
-  NEW_STOP,
-  NEW_BUS,
-
-  NUM_COMMANDS,
-};
-
-enum class OutCommandType {
-  STOP_DESCRIPTION,
-  BUS_DESCRIPTION,
-  ROUTE,
-
-  NUM_COMMANDS,
-};
-
-struct InCommand {
-public:
-  InCommand(InCommandType type) : type_(type) {}
-  virtual InCommandType Type() const { return type_; }
-
-private:
-  InCommandType type_{InCommandType::NUM_COMMANDS};
-};
-
-struct OutCommand {
-public:
-  OutCommand(OutCommandType type) : type_(type) {}
-  virtual OutCommandType Type() const { return type_; }
-
-private:
-  OutCommandType type_{OutCommandType::NUM_COMMANDS};
-};
-
 struct RoutingSettingsCommand {
   unsigned int bus_wait_time;
   double bus_velocity;
 };
 
-struct TransportManagerCommands {
-  std::vector<std::unique_ptr<InCommand>> input_commands;
-  std::vector<std::unique_ptr<OutCommand>> output_commands;
-  RoutingSettingsCommand routing_settings;
-};
-
-struct NewStopCommand : public InCommand {
+struct NewStopCommand {
 public: 
   NewStopCommand(std::string name, double latitude, double longitude, std::unordered_map<std::string, unsigned int> distances)
-    : InCommand(InCommandType::NEW_STOP)
-    , name_(move(name))
+    : name_(move(name))
     , latitude_(latitude)
     , longitude_(longitude)
     , distances_(move(distances))
@@ -77,11 +37,10 @@ private:
   std::unordered_map<std::string, unsigned int> distances_;
 };
 
-struct NewBusCommand : public InCommand {
+struct NewBusCommand {
 public: 
   NewBusCommand(std::string name, std::vector<std::string> stops, bool is_cyclic)
-    : InCommand(InCommandType::NEW_BUS)
-    , name_(move(name))
+    : name_(move(name))
     , stops_(move(stops))
     , cyclic_(is_cyclic)
   {
@@ -97,17 +56,15 @@ private:
   bool cyclic_;
 };
 
-struct StopDescriptionCommand : public OutCommand {
+struct StopDescriptionCommand {
 public: 
   StopDescriptionCommand(std::string name)
-    : OutCommand(OutCommandType::STOP_DESCRIPTION)
-    , name_(move(name))
+    : name_(move(name))
   {
   }
 
   StopDescriptionCommand(std::string name, size_t request_id)
-    : OutCommand(OutCommandType::STOP_DESCRIPTION)
-    , name_(move(name))
+    : name_(move(name))
     , request_id_(request_id)
   {
   }
@@ -120,17 +77,15 @@ private:
   size_t request_id_{std::numeric_limits<size_t>::max()};
 };
 
-struct BusDescriptionCommand : public OutCommand {
+struct BusDescriptionCommand {
 public: 
   BusDescriptionCommand(std::string name)
-    : OutCommand(OutCommandType::BUS_DESCRIPTION)
-    , name_(move(name))
+    : name_(move(name))
   {
   }
 
   BusDescriptionCommand(std::string name, size_t request_id)
-    : OutCommand(OutCommandType::BUS_DESCRIPTION)
-    , name_(move(name))
+    : name_(move(name))
     , request_id_(request_id)
   {
   }
@@ -143,18 +98,16 @@ private:
   size_t request_id_{std::numeric_limits<size_t>::max()};
 };
 
-struct RouteCommand : public OutCommand {
+struct RouteCommand {
 public: 
   RouteCommand(std::string from, std::string to)
-    : OutCommand(OutCommandType::ROUTE)
-    , from_(move(from))
+    : from_(move(from))
     , to_(move(to))
   {
   }
 
   RouteCommand(std::string from, std::string to, size_t request_id)
-    : OutCommand(OutCommandType::ROUTE)
-    , from_(move(from))
+    : from_(move(from))
     , to_(move(to))
     , request_id_(request_id)
   {
@@ -168,6 +121,15 @@ private:
   std::string from_;
   std::string to_;
   size_t request_id_{std::numeric_limits<size_t>::max()};
+};
+
+using InCommand = std::variant<NewStopCommand, NewBusCommand>;
+using OutCommand = std::variant<StopDescriptionCommand, BusDescriptionCommand, RouteCommand>;
+
+struct TransportManagerCommands {
+  std::vector<InCommand> input_commands;
+  std::vector<OutCommand> output_commands;
+  RoutingSettingsCommand routing_settings;
 };
 
 struct StopInfo {

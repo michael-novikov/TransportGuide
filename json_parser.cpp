@@ -9,7 +9,7 @@ using namespace Json;
 
 namespace JsonArgs {
 
-unique_ptr<InCommand> ReadInputCommand(const Node& node) {
+InCommand ReadInputCommand(const Node& node) {
   auto command = node.AsMap();
   auto type = command["type"].AsString();
   if (type == "Stop") {
@@ -27,8 +27,7 @@ unique_ptr<InCommand> ReadInputCommand(const Node& node) {
       distances[to] = static_cast<unsigned int>(road_length.AsInt());
     }
 
-    return make_unique<NewStopCommand>(string{stop_name}, latitude, longitude,
-                                       distances);
+    return NewStopCommand{string{stop_name}, latitude, longitude, distances};
   } else if (type == "Bus") {
     auto route_number = command["name"].AsString();
 
@@ -38,26 +37,26 @@ unique_ptr<InCommand> ReadInputCommand(const Node& node) {
               back_inserter(stops),
               [](const Node& n) { return n.AsString(); });
     auto is_roundtrip = command["is_roundtrip"].AsBool();
-    return make_unique<NewBusCommand>(route_number, stops, is_roundtrip);
+    return NewBusCommand{route_number, stops, is_roundtrip};
   } else {
     throw std::invalid_argument("Unsupported command");
   }
 }
 
-unique_ptr<OutCommand> ReadOutputCommand(const Node& node) {
+OutCommand ReadOutputCommand(const Node& node) {
   auto command = node.AsMap();
   auto type = command["type"].AsString();
   auto request_id = static_cast<size_t>(command["id"].AsInt());
   if (type == "Stop") {
     auto stop_name = command["name"].AsString();
-    return make_unique<StopDescriptionCommand>(stop_name, request_id);
+    return StopDescriptionCommand{stop_name, request_id};
   } else if (type == "Bus") {
     auto route_number = command["name"].AsString();
-    return make_unique<BusDescriptionCommand>(route_number, request_id);
+    return BusDescriptionCommand{route_number, request_id};
   } else if (type == "Route") {
     auto from = command["from"].AsString();
     auto to = command["to"].AsString();
-    return make_unique<RouteCommand>(from, to, request_id);
+    return RouteCommand{from, to, request_id};
   } else {
     throw std::invalid_argument("Unsupported command");
   }
