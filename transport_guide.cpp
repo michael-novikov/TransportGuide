@@ -1,8 +1,8 @@
 #include "bus.h"
 #include "transport_manager.h"
 
-#include "json_parser.h"
-#include "stop_manager.h"
+#include "json_api.h"
+#include "stop.h"
 #include "transport_manager_command.h"
 
 #include <iomanip>
@@ -13,64 +13,67 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <variant>
 
 using namespace std;
 
-void HandleInputCommand(TransportManager &manager, const InCommand *command) {
-  if (command->Type() == InCommandType::NEW_STOP) {
-    auto new_stop_command = dynamic_cast<const NewStopCommand *>(command);
-    manager.AddStop(new_stop_command->Name(), new_stop_command->Latitude(),
-                    new_stop_command->Longitude(),
-                    new_stop_command->Distances());
-  } else if (command->Type() == InCommandType::NEW_BUS) {
-    auto new_bus_command = dynamic_cast<const NewBusCommand *>(command);
-    manager.AddBus(new_bus_command->Name(), new_bus_command->Stops(),
-                   new_bus_command->IsCyclic());
-  } else {
-    throw std::invalid_argument("Unsupported command");
-  }
-}
+struct InCommandHandler {
+  InCommandHandler(TransportManager& manager) : manager_(manager) {}
 
-void HandleOutputCommand(TransportManager &manager, const OutCommand *command, vector<StopInfo>& stop_info_data, vector<BusInfo>& bus_info_data, vector<RouteInfo>& route_data) {
-  if (command->Type() == OutCommandType::STOP_DESCRIPTION) {
-    auto stop_command = dynamic_cast<const StopDescriptionCommand *>(command);
-    auto stop_info = manager.GetStopInfo(stop_command->Name(), stop_command->RequestId());
-    stop_info_data.push_back(move(stop_info));
-  } else if (command->Type() == OutCommandType::BUS_DESCRIPTION) {
-    auto bus_command = dynamic_cast<const BusDescriptionCommand *>(command);
-    auto bus_info = manager.GetBusInfo(bus_command->Name(), bus_command->RequestId());
-    bus_info_data.push_back(move(bus_info));
-  } else if (command->Type() == OutCommandType::ROUTE) {
-    auto route_command = dynamic_cast<const RouteCommand*>(command);
-    auto route_info = manager.GetRouteInfo(route_command->From(), route_command->To(), route_command->RequestId());
-    route_data.push_back(move(route_info));
-  } else {
-    throw std::invalid_argument("Unsupported command");
+  TransportManager& manager_;
+
+  void operator()(const NewStopCommand &new_stop_command) {
+    manager_.AddStop(new_stop_command.Name(), new_stop_command.Latitude(),
+                     new_stop_command.Longitude(),
+                     new_stop_command.Distances());
   }
-}
+  void operator()(const NewBusCommand &new_bus_command ) {
+    manager_.AddBus(new_bus_command.Name(), new_bus_command.Stops(),
+                    new_bus_command.IsCyclic());
+  }
+};
+
+struct OutCommandHandler {
+  OutCommandHandler(TransportManager& manager) : manager_(manager) {}
+
+  vector<StopInfo> stop_info_data;
+  vector<BusInfo> bus_info_data;
+  vector<RouteInfo> route_data;
+  TransportManager& manager_;
+
+  void operator()(const StopDescriptionCommand &c) {
+    stop_info_data.push_back(manager_.GetStopInfo(c.Name(), c.RequestId()));
+  }
+  void operator()(const BusDescriptionCommand &c) {
+    bus_info_data.push_back(manager_.GetBusInfo(c.Name(), c.RequestId()));
+  }
+  void operator()(const RouteCommand &c) {
+    route_data.push_back(manager_.GetRouteInfo(c.From(), c.To(), c.RequestId()));
+  }
+};
 
 int main() {
-  //ifstream ifs{"input6"};
-  //TransportManagerCommands commands = JsonArgs::ReadCommands(ifs);
-  TransportManagerCommands commands = JsonArgs::ReadCommands(cin);
+  auto& input = cin;
+  auto& output = cout;
+
+  TransportManagerCommands commands = JsonArgs::ReadCommands(input);
 
   TransportManager manager{
     RoutingSettings{commands.routing_settings.bus_wait_time, commands.routing_settings.bus_velocity}
   };
 
+  InCommandHandler in_handler{manager};
   for (const auto& command : commands.input_commands) {
-    HandleInputCommand(manager, command.get());
+    visit(in_handler, command);
   }
 
   manager.CreateRoutes();
-
-  vector<StopInfo> stop_info_data;
-  vector<BusInfo> bus_info_data;
-  vector<RouteInfo> route_data;
+  OutCommandHandler out_handler{manager};
 
   for (const auto& command : commands.output_commands) {
-    HandleOutputCommand(manager, command.get(), stop_info_data, bus_info_data, route_data);
+    visit(out_handler, command);
   }
 
-  JsonArgs::PrintResults(stop_info_data, bus_info_data, route_data, cout);
+  JsonArgs::PrintResults(out_handler.stop_info_data, out_handler.bus_info_data, out_handler.route_data, output);
+  output << endl;
 }

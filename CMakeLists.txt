@@ -6,6 +6,7 @@ set(CMAKE_ENABLE_EXPORTS ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer -fno-optimize-sibling-calls -O0")
 
 set(this_project transport_guide)
 
@@ -16,21 +17,21 @@ project(${this_project} CXX)
 
 set(headers
   bus.h
-  stop_manager.h
+  stop.h
   transport_manager.h
   transport_manager_command.h
   json.h
-  json_parser.h
+  json_api.h
   graph.h
   router.h
   )
 
 set(sources
   bus.cpp
-  stop_manager.cpp
+  stop.cpp
   transport_manager.cpp
   json.cpp
-  json_parser.cpp
+  json_api.cpp
   ${this_project}.cpp
   )
 

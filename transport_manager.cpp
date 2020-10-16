@@ -1,7 +1,7 @@
 #include "transport_manager.h"
 #include "bus.h"
 #include "graph.h"
-#include "stop_manager.h"
+#include "stop.h"
 #include "transport_manager_command.h"
 
 #include <iterator>

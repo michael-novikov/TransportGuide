@@ -1,6 +1,6 @@
 #pragma once
 
-#include "stop_manager.h"
+#include "stop.h"
 
 #include <cstddef>
 #include <optional>
@@ -20,7 +20,7 @@ public:
   RouteNumber Number() const { return number_; }
   const auto& Stops() const { return stops_; }
   size_t UniqueStopNumber() const { return stop_names_.size(); }
-  std::optional<std::pair<double, double>> RouteLength() { return route_length_; }
+  std::optional<std::pair<double, double>> RouteLength() const { return route_length_; }
   bool ContainsStop(const std::string& stop_name) const { return stop_names_.count(stop_name); }
 
   void SetRouteLength(size_t road_length, double direct_length) { route_length_ = {road_length, direct_length}; }

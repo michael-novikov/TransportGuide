@@ -1,6 +1,6 @@
 #pragma once
 
-#include "stop_manager.h"
+#include "stop.h"
 #include "bus.h"
 #include "transport_manager_command.h"
 #include "graph.h"

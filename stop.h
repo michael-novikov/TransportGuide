@@ -11,9 +11,9 @@ public:
   static long double Distance(const Coordinates& lhs, const Coordinates& rhs);
 
 private:
-  static const long double PI;
-  static const long double ONE_DEG;
-  static const long double EARTH_RADIUS;
+  static constexpr const long double PI = 3.1415926535;
+  static constexpr const long double ONE_DEG = Coordinates::PI / 180;
+  static constexpr const long double EARTH_RADIUS = 6'371'000;
 };
 
 struct Stop {
