@@ -1,5 +1,5 @@
 #include "bus.h"
-#include "stop_manager.h"
+#include "stop.h"
 
 #include <algorithm>
 #include <iterator>

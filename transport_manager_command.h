@@ -16,7 +16,7 @@ struct RoutingSettingsCommand {
 };
 
 struct NewStopCommand {
-public: 
+public:
   NewStopCommand(std::string name, double latitude, double longitude, std::unordered_map<std::string, unsigned int> distances)
     : name_(move(name))
     , latitude_(latitude)
@@ -38,7 +38,7 @@ private:
 };
 
 struct NewBusCommand {
-public: 
+public:
   NewBusCommand(std::string name, std::vector<std::string> stops, bool is_cyclic)
     : name_(move(name))
     , stops_(move(stops))
@@ -57,7 +57,7 @@ private:
 };
 
 struct StopDescriptionCommand {
-public: 
+public:
   StopDescriptionCommand(std::string name)
     : name_(move(name))
   {
@@ -78,7 +78,7 @@ private:
 };
 
 struct BusDescriptionCommand {
-public: 
+public:
   BusDescriptionCommand(std::string name)
     : name_(move(name))
   {
@@ -99,7 +99,7 @@ private:
 };
 
 struct RouteCommand {
-public: 
+public:
   RouteCommand(std::string from, std::string to)
     : from_(move(from))
     , to_(move(to))
@@ -149,7 +149,6 @@ struct BusInfo {
 
 struct WaitActivity {
   std::string type;
-  //double time;
   unsigned int time;
   std::string stop_name;
 };

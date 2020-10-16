@@ -1,8 +1,8 @@
 #include "bus.h"
 #include "transport_manager.h"
 
-#include "json_parser.h"
-#include "stop_manager.h"
+#include "json_api.h"
+#include "stop.h"
 #include "transport_manager_command.h"
 
 #include <iomanip>

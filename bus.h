@@ -1,6 +1,6 @@
 #pragma once
 
-#include "stop_manager.h"
+#include "stop.h"
 
 #include <cstddef>
 #include <optional>
