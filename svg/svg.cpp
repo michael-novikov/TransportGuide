@@ -46,16 +46,22 @@ void RenderColor(std::ostream& out, const Color& color) {
 
 class Shape {
 public:
-  virtual Shape& SetFillColor(const Color& fill) { fill_ = fill; return *this; }
-  virtual Shape& SetStrokeColor(const Color& stroke) { stroke_ = stroke; return *this; }
-  virtual Shape& SetStrokeWidth(double stroke_width) { stroke_width_ = stroke_width; return *this; }
-  virtual Shape& SetStrokeLineCap(const std::string& stroke_linecap) { stroke_linecap_ = stroke_linecap; return *this; }
-  virtual Shape& SetStrokeLineJoin(const std::string& stroke_linejoin) { stroke_linejoin_ = stroke_linejoin; return *this; }
-
   virtual void Render(std::ostream& out) const = 0;
   virtual ~Shape() = default;
+};
 
-  virtual void RenderProperties(std::ostream& out) const {
+template <typename Owner>
+class ShapeProperties {
+public:
+  Owner& SetFillColor(const Color& fill) { fill_ = fill; return AsOwner(); }
+  Owner& SetStrokeColor(const Color& stroke) { stroke_ = stroke; return AsOwner(); }
+  Owner& SetStrokeWidth(double stroke_width) { stroke_width_ = stroke_width; return AsOwner(); }
+  Owner& SetStrokeLineCap(const std::string& stroke_linecap) { stroke_linecap_ = stroke_linecap; return AsOwner(); }
+  Owner& SetStrokeLineJoin(const std::string& stroke_linejoin) { stroke_linejoin_ = stroke_linejoin; return AsOwner(); }
+
+  Owner& AsOwner() { return static_cast<Owner&>(*this); }
+
+  void RenderProperties(std::ostream& out) const {
     out << "fill" << "=" << "\"";
     RenderColor(out, fill_);
     out << "\"";
@@ -75,7 +81,7 @@ public:
     }
   }
 
-protected:
+private:
   Color fill_{NoneColor};
   Color stroke_{NoneColor};
   double stroke_width_{1.0};
@@ -83,40 +89,15 @@ protected:
   std::string stroke_linejoin_;
 };
 
-class Circle : public Shape {
+class Circle : public Shape, public ShapeProperties<Circle> {
 public:
-  virtual Circle& SetFillColor(const Color& fill) override {
-    Shape::SetFillColor(fill);
-    return *this;
-  }
-
-  virtual Circle& SetStrokeColor(const Color& stroke) override {
-    Shape::SetStrokeColor(stroke);
-      return *this;
-  }
-
-  virtual Circle& SetStrokeWidth(double stroke_width) override {
-    Shape::SetStrokeWidth(stroke_width);
-    return *this;
-  }
-
-  virtual Circle& SetStrokeLineCap(const std::string& stroke_linecap) override {
-    Shape::SetStrokeLineCap(stroke_linecap);
-    return *this;
-  }
-
-  virtual Circle& SetStrokeLineJoin(const std::string& stroke_linejoin) override {
-    Shape::SetStrokeLineJoin(stroke_linejoin);
-    return *this;
-  }
-
   Circle& SetCenter(Point center) { center_ = center; return *this; }
   Circle& SetRadius(double r) { r_ = r; return *this; }
 
-  virtual void Render(std::ostream& out) const override {
+  void Render(std::ostream& out) const {
     out << "<circle ";
 
-    Shape::RenderProperties(out);
+    ShapeProperties::RenderProperties(out);
 
     out << " " << "cx" << "=" << "\"" << center_.x << "\"";
     out << " " << "cy" << "=" << "\"" << center_.y << "\"";
@@ -130,39 +111,14 @@ private:
   double r_{1.0};
 };
 
-class Polyline : public Shape {
+class Polyline : public Shape, public ShapeProperties<Polyline> {
 public:
-  virtual Polyline& SetFillColor(const Color& fill) override {
-    Shape::SetFillColor(fill);
-    return *this;
-  }
-
-  virtual Polyline& SetStrokeColor(const Color& stroke) override {
-    Shape::SetStrokeColor(stroke);
-    return *this;
-  }
-
-  virtual Polyline& SetStrokeWidth(double stroke_width) override {
-    Shape::SetStrokeWidth(stroke_width);
-    return *this;
-  }
-
-  virtual Polyline& SetStrokeLineCap(const std::string& stroke_linecap) override {
-    Shape::SetStrokeLineCap(stroke_linecap);
-    return *this;
-  }
-
-  virtual Polyline& SetStrokeLineJoin(const std::string& stroke_linejoin) override {
-    Shape::SetStrokeLineJoin(stroke_linejoin);
-    return *this;
-  }
-
   Polyline& AddPoint(Point point) { points_.push_back(point); return *this; }
 
-  virtual void Render(std::ostream& out) const override {
+  void Render(std::ostream& out) const {
     out << "<polyline ";
 
-    Shape::RenderProperties(out);
+    ShapeProperties::RenderProperties(out);
 
     out << " " << "points" << "=" << "\"";
 
@@ -186,43 +142,18 @@ private:
   std::vector<Point> points_;
 };
 
-class Text : public Shape {
+class Text : public Shape, public ShapeProperties<Text> {
 public:
-  virtual Text& SetFillColor(const Color& fill) override {
-    Shape::SetFillColor(fill);
-    return *this;
-  }
-
-  virtual Text& SetStrokeColor(const Color& stroke) override {
-    Shape::SetStrokeColor(stroke);
-      return *this;
-  }
-
-  virtual Text& SetStrokeWidth(double stroke_width) override {
-    Shape::SetStrokeWidth(stroke_width);
-    return *this;
-  }
-
-  virtual Text& SetStrokeLineCap(const std::string& stroke_linecap) override {
-    Shape::SetStrokeLineCap(stroke_linecap);
-    return *this;
-  }
-
-  virtual Text& SetStrokeLineJoin(const std::string& stroke_linejoin) override {
-    Shape::SetStrokeLineJoin(stroke_linejoin);
-    return *this;
-  }
-
   Text& SetPoint(Point coordinates) { coordinates_ = coordinates; return *this; }
   Text& SetOffset(Point offset) { offset_ = offset; return *this; }
   Text& SetFontSize(uint32_t font_size) { font_size_ = font_size; return *this; }
   Text& SetFontFamily(const std::string& font_family) { font_family_ = font_family; return *this; }
   Text& SetData(const std::string& data) { data_ = data; return *this; }
 
-  virtual void Render(std::ostream& out) const override {
+  void Render(std::ostream& out) const {
     out << "<text ";
 
-    Shape::RenderProperties(out);
+    ShapeProperties::RenderProperties(out);
 
     out << " " << "x" << "=" << "\"" << coordinates_.x << "\"";
     out << " " << "y" << "=" << "\"" << coordinates_.y << "\"";
@@ -253,9 +184,8 @@ class Document {
 public:
   explicit Document() {}
 
-  void Add(const Circle& shape) { shapes_.emplace_back(new Circle{shape}); }
-  void Add(const Polyline& shape) { shapes_.emplace_back(new Polyline{shape}); }
-  void Add(const Text& shape) { shapes_.emplace_back(new Text{shape}); }
+  template <typename ShapeType>
+  void Add(ShapeType shape) { shapes_.push_back(std::make_unique<ShapeType>(std::move(shape))); }
 
   void Render(std::ostream& out) const {
     out << "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>";
@@ -269,7 +199,7 @@ public:
   }
 
 private:
-  std::vector<std::shared_ptr<Shape>> shapes_;
+  std::vector<std::unique_ptr<Shape>> shapes_;
 };
 
 }
