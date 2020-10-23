@@ -13,30 +13,35 @@
 namespace Svg {
 
 struct Point {
-  double x, y;
+  double x{0};
+  double y{0};
 };
 
 struct Rgb {
-  int red, green, blue;
+  std::uint8_t red;
+  std::uint8_t green;
+  std::uint8_t blue;
 };
+
+using Color = std::variant<std::monostate, Rgb, std::string>;
+const Color NoneColor{};
 
 void RenderColor(std::ostream& out, std::monostate) {
   out << "none";
 }
 
 void RenderColor(std::ostream& out, const Rgb& rgb) {
-  out << "rgb(" << rgb.red << "," << rgb.green << "," << rgb.blue << ")";
+  out << "rgb(" << static_cast<int>(rgb.red)
+      << "," << static_cast<int>(rgb.green)
+      << "," << static_cast<int>(rgb.blue) << ")";
 }
 
 void RenderColor(std::ostream& out, const std::string& name) {
   out << name;
 }
 
-using Color = std::variant<std::monostate, Rgb, std::string>;
-const Color NoneColor{};
-
 void RenderColor(std::ostream& out, const Color& color) {
-  std::visit([&out](const Color& c) { RenderColor(out, c); }, color);
+  std::visit([&out](const auto& c) { RenderColor(out, c); }, color);
 }
 
 class Shape {
@@ -48,6 +53,7 @@ public:
   virtual Shape& SetStrokeLineJoin(const std::string& stroke_linejoin) { stroke_linejoin_ = stroke_linejoin; return *this; }
 
   virtual void Render(std::ostream& out) const = 0;
+  virtual ~Shape() = default;
 
   virtual void RenderProperties(std::ostream& out) const {
     out << "fill" << "=" << "\"";
