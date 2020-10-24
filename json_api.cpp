@@ -1,8 +1,16 @@
 #include "json_api.h"
 
 #include "json.h"
+#include "svg/svg.h"
+#include "transport_manager.h"
 #include "transport_manager_command.h"
+
+#include <cstdint>
+#include <algorithm>
+#include <iterator>
+#include <optional>
 #include <variant>
+#include <stdexcept>
 
 using namespace std;
 using namespace Json;
@@ -14,12 +22,8 @@ InCommand ReadInputCommand(const Node& node) {
   auto type = command["type"].AsString();
   if (type == "Stop") {
     auto stop_name = command["name"].AsString();
-
-    const auto& latitude_node = command["latitude"];
-    double latitude = holds_alternative<int>(latitude_node) ? latitude_node.AsInt() : latitude_node.AsDouble();
-
-    const auto& longitude_node = command["longitude"];
-    double longitude = holds_alternative<int>(longitude_node) ? longitude_node.AsInt() : longitude_node.AsDouble();
+    double latitude = command["latitude"].AsDouble();
+    double longitude = command["longitude"].AsDouble();
 
     std::unordered_map<std::string, unsigned int> distances;
     auto distances_nodes = command["road_distances"].AsMap();
@@ -39,7 +43,7 @@ InCommand ReadInputCommand(const Node& node) {
     auto is_roundtrip = command["is_roundtrip"].AsBool();
     return NewBusCommand{route_number, stops, is_roundtrip};
   } else {
-    throw std::invalid_argument("Unsupported command");
+    throw invalid_argument("Unsupported command");
   }
 }
 
@@ -60,33 +64,98 @@ OutCommand ReadOutputCommand(const Node& node) {
   } else if (type == "Map") {
     return MapCommand{request_id};
   } else {
-    throw std::invalid_argument("Unsupported command");
+    throw invalid_argument("Unsupported command");
   }
 }
 
-TransportManagerCommands ReadCommands(std::istream& s) {
-  TransportManagerCommands commands;
+static vector<InCommand> ParseBaseRequests(const vector<Node>& base_request_nodes) {
+  vector<InCommand> base_requests;
+  for (const auto& node : base_request_nodes) {
+    base_requests.push_back(ReadInputCommand(node));
+  }
+  return base_requests;
+}
 
+static vector<OutCommand> ParseStatRequests(const vector<Node>& stat_request_nodes) {
+  vector<OutCommand> stat_requests;
+  for (const auto& node : stat_request_nodes) {
+    stat_requests.push_back(ReadOutputCommand(node));
+  }
+  return stat_requests;
+}
+
+static RoutingSettingsCommand ParseRoutingSettings(const map<string, Node>& routing_settings_node) {
+  return {
+    static_cast<unsigned int>(routing_settings_node.at("bus_wait_time").AsInt()),
+    routing_settings_node.at("bus_velocity").AsDouble(),
+  };
+}
+
+static Svg::Color ParseColor(const Node& node) {
+  if (node.IsArray()) {
+    const auto color_array = node.AsArray();
+    if (color_array.size() == 4) {
+      return Svg::Rgba{
+        static_cast<uint8_t>(color_array[0].AsInt()),
+        static_cast<uint8_t>(color_array[1].AsInt()),
+        static_cast<uint8_t>(color_array[2].AsInt()),
+        color_array[3].AsDouble(),
+      };
+    }
+    else {
+      return Svg::Rgb{
+        static_cast<uint8_t>(color_array[0].AsInt()),
+        static_cast<uint8_t>(color_array[1].AsInt()),
+        static_cast<uint8_t>(color_array[2].AsInt()),
+      };
+    }
+  }
+  else {
+    return node.AsString();
+  }
+}
+
+static RenderSettingsCommand ParseRenderSettings(const map<string, Node>& render_settings_node) {
+  RenderSettingsCommand render_settings;
+
+  render_settings.width = render_settings_node.at("width").AsDouble();
+  render_settings.height = render_settings_node.at("height").AsDouble();
+  render_settings.padding = render_settings_node.at("padding").AsDouble();
+  render_settings.stop_radius = render_settings_node.at("stop_radius").AsDouble();
+  render_settings.line_width = render_settings_node.at("line_width").AsDouble();
+  render_settings.stop_label_font_size = render_settings_node.at("stop_label_font_size").AsInt();
+
+  const auto stop_label_offset_node = render_settings_node.at("stop_label_offset").AsArray();
+  render_settings.stop_label_offset = Svg::Point{stop_label_offset_node[0].AsDouble(),
+                                                 stop_label_offset_node[1].AsDouble() };
+
+  render_settings.underlayer_color = ParseColor(render_settings_node.at("underlayer_color"));
+  render_settings.underlayer_width = render_settings_node.at("underlayer_width").AsDouble();
+
+  const auto color_palette_node = render_settings_node.at("color_palette").AsArray();
+  std::transform(begin(color_palette_node), end(color_palette_node),
+                 back_inserter(render_settings.color_palette),
+                 ParseColor);
+
+  return render_settings;
+}
+
+TransportManagerCommands ReadCommands(istream& s) {
   auto root = Load(s).GetRoot().AsMap();
 
-  auto base_requests = root["base_requests"].AsArray();
-  for (const auto& node : base_requests) {
-    commands.input_commands.push_back(ReadInputCommand(node));
-  }
+  auto base_requests = ParseBaseRequests(root.at("base_requests").AsArray());
+  auto stat_requests = ParseStatRequests(root.at("stat_requests").AsArray());
+  auto routing_settings = ParseRoutingSettings(root.at("routing_settings").AsMap());
+  auto render_settings = root.count("render_settings")
+    ? optional<RenderSettingsCommand>{ParseRenderSettings(root.at("render_settings").AsMap())}
+    : nullopt;
 
-  auto stat_requests = root["stat_requests"].AsArray();
-  for (const auto& node : stat_requests) {
-    commands.output_commands.push_back(ReadOutputCommand(node));
-  }
-
-  auto routing_settings = root["routing_settings"].AsMap();
-  commands.routing_settings.bus_wait_time = static_cast<unsigned int>(routing_settings["bus_wait_time"].AsInt());
-
-  auto bus_velocity_node = routing_settings["bus_velocity"];
-  commands.routing_settings.bus_velocity =
-    holds_alternative<int>(bus_velocity_node) ? bus_velocity_node.AsInt() : bus_velocity_node.AsDouble();
-
-  return commands;
+  return TransportManagerCommands{
+    base_requests,
+    stat_requests,
+    routing_settings,
+    render_settings,
+  };
 }
 
 void PrintResults(std::ostream& output, const std::vector<StopInfo>& stop_info, const std::vector<BusInfo>& bus_info, const std::vector<RouteInfo>& route_data, const std::vector<MapDescription>& maps) {

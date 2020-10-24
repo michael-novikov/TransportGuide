@@ -1,5 +1,7 @@
 #pragma once
 
+#include "svg/svg.h"
+
 #include <algorithm>
 #include <limits>
 #include <string>
@@ -13,6 +15,19 @@
 struct RoutingSettingsCommand {
   unsigned int bus_wait_time;
   double bus_velocity;
+};
+
+struct RenderSettingsCommand {
+  double width;
+  double height;
+  double padding;
+  double stop_radius;
+  double line_width;
+  int stop_label_font_size;
+  Svg::Point stop_label_offset;
+  Svg::Color underlayer_color;
+  double underlayer_width;
+  std::vector<Svg::Color> color_palette;
 };
 
 struct NewStopCommand {
@@ -121,6 +136,7 @@ struct TransportManagerCommands {
   std::vector<InCommand> input_commands;
   std::vector<OutCommand> output_commands;
   RoutingSettingsCommand routing_settings;
+  std::optional<RenderSettingsCommand> render_settings;
 };
 
 struct StopInfo {

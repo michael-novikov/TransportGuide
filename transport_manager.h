@@ -13,9 +13,22 @@
 #include <memory>
 #include <utility>
 
-struct RoutingSettings{
+struct RoutingSettings {
   unsigned int bus_wait_time;
   double bus_velocity;
+};
+
+struct RenderSettings {
+  double width;
+  double height;
+  double padding;
+  double stop_radius;
+  double line_width;
+  int stop_label_font_size;
+  Svg::Point stop_label_offset;
+  Svg::Color underlayer_color;
+  double underlayer_width;
+  std::vector<Svg::Color> color_palette;
 };
 
 class TransportManager {

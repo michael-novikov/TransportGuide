@@ -26,6 +26,7 @@ set(headers
   json_api.h
   graph.h
   router.h
+  svg/svg.h
   )
 
 set(sources
@@ -34,6 +35,7 @@ set(sources
   transport_manager.cpp
   json.cpp
   json_api.cpp
+  svg/svg.cpp
   ${this_project}.cpp
   )
 

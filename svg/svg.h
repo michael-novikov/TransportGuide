@@ -21,11 +21,19 @@ struct Rgb {
   std::uint8_t blue;
 };
 
-using Color = std::variant<std::monostate, Rgb, std::string>;
+struct Rgba {
+  std::uint8_t red;
+  std::uint8_t green;
+  std::uint8_t blue;
+  double alpha;
+};
+
+using Color = std::variant<std::monostate, Rgb, Rgba, std::string>;
 const Color NoneColor{};
 
 void RenderColor(std::ostream& out, std::monostate);
 void RenderColor(std::ostream& out, const Rgb& rgb);
+void RenderColor(std::ostream& out, const Rgba& rgb);
 void RenderColor(std::ostream& out, const std::string& name);
 void RenderColor(std::ostream& out, const Color& color);
 

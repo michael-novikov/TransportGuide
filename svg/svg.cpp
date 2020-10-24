@@ -12,6 +12,13 @@ void RenderColor(std::ostream& out, const Rgb& rgb) {
       << "," << static_cast<int>(rgb.blue) << ")";
 }
 
+void RenderColor(std::ostream& out, const Rgba& rgba) {
+  out << "rgba(" << static_cast<int>(rgba.red)
+      << "," << static_cast<int>(rgba.green)
+      << "," << static_cast<int>(rgba.blue)
+      << "," << rgba.alpha << ")";
+}
+
 void RenderColor(std::ostream& out, const std::string& name) {
   out << name;
 }
