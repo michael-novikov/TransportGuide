@@ -46,7 +46,7 @@ InCommand ReadInputCommand(const Node& node) {
 OutCommand ReadOutputCommand(const Node& node) {
   auto command = node.AsMap();
   auto type = command["type"].AsString();
-  auto request_id = static_cast<size_t>(command["id"].AsInt());
+  auto request_id = command["id"].AsInt();
   if (type == "Stop") {
     auto stop_name = command["name"].AsString();
     return StopDescriptionCommand{stop_name, request_id};
@@ -57,6 +57,8 @@ OutCommand ReadOutputCommand(const Node& node) {
     auto from = command["from"].AsString();
     auto to = command["to"].AsString();
     return RouteCommand{from, to, request_id};
+  } else if (type == "Map") {
+    return MapCommand{request_id};
   } else {
     throw std::invalid_argument("Unsupported command");
   }
@@ -87,12 +89,12 @@ TransportManagerCommands ReadCommands(std::istream& s) {
   return commands;
 }
 
-void PrintResults(const std::vector<StopInfo>& stop_info, const std::vector<BusInfo>& bus_info, const std::vector<RouteInfo>& route_data, std::ostream& output) {
+void PrintResults(std::ostream& output, const std::vector<StopInfo>& stop_info, const std::vector<BusInfo>& bus_info, const std::vector<RouteInfo>& route_data, const std::vector<MapDescription>& maps) {
   vector<Node> result;
 
   for (const auto& bus : bus_info) {
     map<string, Node> bus_dict = {
-      {"request_id", Node(static_cast<int>(bus.request_id))},
+      {"request_id", Node(bus.request_id)},
     };
 
     if (bus.error_message.has_value()) {
@@ -109,7 +111,7 @@ void PrintResults(const std::vector<StopInfo>& stop_info, const std::vector<BusI
 
   for (const auto& stop : stop_info) {
     map<string, Node> stop_dict = {
-      {"request_id", Node(static_cast<int>(stop.request_id))},
+      {"request_id", Node(stop.request_id)},
     };
 
     if (stop.error_message.has_value()) {
@@ -128,7 +130,7 @@ void PrintResults(const std::vector<StopInfo>& stop_info, const std::vector<BusI
 
   for (const auto& route : route_data) {
     map<string, Node> route_dict = {
-      {"request_id", Node(static_cast<int>(route.request_id))},
+      {"request_id", Node(route.request_id)},
     };
 
     if (route.error_message.has_value()) {

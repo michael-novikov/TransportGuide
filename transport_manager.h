@@ -31,11 +31,13 @@ public:
   void AddBus(const RouteNumber& route_number, const std::vector<std::string>& stop_names, bool cyclic);
 
   std::pair<unsigned int, double> ComputeBusRouteLength(const RouteNumber& route_number);
-  StopInfo GetStopInfo(const std::string& stop_name, size_t request_id);
-  BusInfo GetBusInfo(const RouteNumber& route_number, size_t request_id);
+  StopInfo GetStopInfo(const std::string& stop_name, int request_id);
+  BusInfo GetBusInfo(const RouteNumber& route_number, int request_id);
 
   void CreateRoutes();
-  RouteInfo GetRouteInfo(std::string from, std::string to, size_t request_id);
+  RouteInfo GetRouteInfo(std::string from, std::string to, int request_id);
+
+  MapDescription GetMap() const;
 private:
   std::unordered_map<std::string, size_t> stop_idx;
   std::vector<Stop> stops_;

@@ -56,75 +56,66 @@ private:
   bool cyclic_;
 };
 
-struct StopDescriptionCommand {
+struct OutCommandBase {
 public:
-  StopDescriptionCommand(std::string name)
-    : name_(move(name))
-  {
-  }
+  OutCommandBase(int request_id) : request_id_(request_id) {}
+  int RequestId() const { return request_id_; }
+protected:
+  int request_id_;
+};
 
-  StopDescriptionCommand(std::string name, size_t request_id)
-    : name_(move(name))
-    , request_id_(request_id)
+struct StopDescriptionCommand : public OutCommandBase {
+public:
+  StopDescriptionCommand(std::string name, int request_id)
+    : OutCommandBase(request_id)
+    , name_(move(name))
   {
   }
 
   std::string Name() const { return name_; }
-  size_t RequestId() const { return request_id_; }
 
 private:
   std::string name_;
-  size_t request_id_{std::numeric_limits<size_t>::max()};
 };
 
-struct BusDescriptionCommand {
+struct BusDescriptionCommand : public OutCommandBase {
 public:
-  BusDescriptionCommand(std::string name)
-    : name_(move(name))
-  {
-  }
-
-  BusDescriptionCommand(std::string name, size_t request_id)
-    : name_(move(name))
-    , request_id_(request_id)
+  BusDescriptionCommand(std::string name, int request_id)
+    : OutCommandBase(request_id)
+    , name_(move(name))
   {
   }
 
   std::string Name() const { return name_; }
-  size_t RequestId() const { return request_id_; }
 
 private:
   std::string name_;
-  size_t request_id_{std::numeric_limits<size_t>::max()};
 };
 
-struct RouteCommand {
+struct RouteCommand : public OutCommandBase {
 public:
-  RouteCommand(std::string from, std::string to)
-    : from_(move(from))
+  RouteCommand(std::string from, std::string to, int request_id)
+    : OutCommandBase(request_id)
+    , from_(move(from))
     , to_(move(to))
-  {
-  }
-
-  RouteCommand(std::string from, std::string to, size_t request_id)
-    : from_(move(from))
-    , to_(move(to))
-    , request_id_(request_id)
   {
   }
 
   std::string From() const { return from_; }
   std::string To() const { return to_; }
-  size_t RequestId() const { return request_id_; }
 
 private:
   std::string from_;
   std::string to_;
-  size_t request_id_{std::numeric_limits<size_t>::max()};
+};
+
+struct MapCommand : public OutCommandBase {
+public:
+  MapCommand(int request_id) : OutCommandBase(request_id) {}
 };
 
 using InCommand = std::variant<NewStopCommand, NewBusCommand>;
-using OutCommand = std::variant<StopDescriptionCommand, BusDescriptionCommand, RouteCommand>;
+using OutCommand = std::variant<StopDescriptionCommand, BusDescriptionCommand, RouteCommand, MapCommand>;
 
 struct TransportManagerCommands {
   std::vector<InCommand> input_commands;
@@ -134,13 +125,13 @@ struct TransportManagerCommands {
 
 struct StopInfo {
   std::vector<std::string> buses;
-  size_t request_id;
+  int request_id;
   std::optional<std::string> error_message;
 };
 
 struct BusInfo {
   size_t route_length;
-  size_t request_id;
+  int request_id;
   double curvature;
   size_t stop_count;
   size_t unique_stop_count;
@@ -161,8 +152,12 @@ struct BusActivity {
 };
 
 struct RouteInfo {
-  size_t request_id;
+  int request_id;
   double total_time;
   std::vector<std::variant<WaitActivity, BusActivity>> items;
   std::optional<std::string> error_message;
+};
+
+struct MapDescription {
+  std::string svg_map;
 };

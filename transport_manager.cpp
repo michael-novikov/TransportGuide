@@ -69,7 +69,7 @@ std::pair<unsigned int, double> TransportManager::ComputeBusRouteLength(const Ro
   return {distance_road, distance_direct};
 }
 
-StopInfo TransportManager::GetStopInfo(const string& stop_name, size_t request_id) {
+StopInfo TransportManager::GetStopInfo(const string& stop_name, int request_id) {
   if (!stop_idx.count(stop_name)) {
     return StopInfo{
       .request_id = request_id,
@@ -90,7 +90,7 @@ StopInfo TransportManager::GetStopInfo(const string& stop_name, size_t request_i
   };
 }
 
-BusInfo TransportManager::GetBusInfo(const RouteNumber& bus_no, size_t request_id) {
+BusInfo TransportManager::GetBusInfo(const RouteNumber& bus_no, int request_id) {
   if (!buses_.count(bus_no)) {
     return BusInfo{
       .request_id = request_id,
@@ -151,28 +151,33 @@ void TransportManager::CreateRoutes() {
   router = make_unique<Graph::Router<double>>(*road_graph);
 }
 
-  RouteInfo TransportManager::GetRouteInfo(std::string from, std::string to, size_t request_id) {
-    size_t from_id = 2 * stop_idx[from];
-    size_t to_id = 2 * stop_idx[to];
-    auto route_info = router->BuildRoute(from_id, to_id);
+RouteInfo TransportManager::GetRouteInfo(std::string from, std::string to, int request_id) {
+  size_t from_id = 2 * stop_idx[from];
+  size_t to_id = 2 * stop_idx[to];
+  auto route_info = router->BuildRoute(from_id, to_id);
 
-    if (!route_info.has_value()) {
-      return {
-        .request_id = request_id,
-        .error_message = "not found",
-      };
-    }
-
-    std::vector<std::variant<WaitActivity, BusActivity>> items;
-    auto id = route_info.value().id;
-    for (size_t i = 0; i < route_info.value().edge_count; ++i) {
-      auto edge_id = router->GetRouteEdge(id, i);
-      items.push_back(edge_description[edge_id]);
-    }
-
+  if (!route_info.has_value()) {
     return {
       .request_id = request_id,
-      .total_time = route_info.value().weight,
-      .items = items,
+      .error_message = "not found",
     };
   }
+
+  std::vector<std::variant<WaitActivity, BusActivity>> items;
+  auto id = route_info.value().id;
+  for (size_t i = 0; i < route_info.value().edge_count; ++i) {
+    auto edge_id = router->GetRouteEdge(id, i);
+    items.push_back(edge_description[edge_id]);
+  }
+
+  return {
+    .request_id = request_id,
+    .total_time = route_info.value().weight,
+    .items = items,
+  };
+}
+
+MapDescription TransportManager::GetMap() const {
+  string map;
+  return {map};
+}
