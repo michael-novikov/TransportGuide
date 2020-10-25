@@ -1,4 +1,5 @@
 #include "bus.h"
+
 #include "stop.h"
 
 #include <algorithm>

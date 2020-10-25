@@ -1,7 +1,7 @@
 #include "json_api.h"
 
 #include "json.h"
-#include "svg/svg.h"
+#include "svg.h"
 #include "transport_manager.h"
 #include "transport_manager_command.h"
 
@@ -84,7 +84,7 @@ static vector<OutCommand> ParseStatRequests(const vector<Node>& stat_request_nod
   return stat_requests;
 }
 
-static RoutingSettingsCommand ParseRoutingSettings(const map<string, Node>& routing_settings_node) {
+static RoutingSettings ParseRoutingSettings(const map<string, Node>& routing_settings_node) {
   return {
     static_cast<unsigned int>(routing_settings_node.at("bus_wait_time").AsInt()),
     routing_settings_node.at("bus_velocity").AsDouble(),
@@ -115,8 +115,8 @@ static Svg::Color ParseColor(const Node& node) {
   }
 }
 
-static RenderSettingsCommand ParseRenderSettings(const map<string, Node>& render_settings_node) {
-  RenderSettingsCommand render_settings;
+static RenderSettings ParseRenderSettings(const map<string, Node>& render_settings_node) {
+  RenderSettings render_settings;
 
   render_settings.width = render_settings_node.at("width").AsDouble();
   render_settings.height = render_settings_node.at("height").AsDouble();
@@ -147,7 +147,7 @@ TransportManagerCommands ReadCommands(istream& s) {
   auto stat_requests = ParseStatRequests(root.at("stat_requests").AsArray());
   auto routing_settings = ParseRoutingSettings(root.at("routing_settings").AsMap());
   auto render_settings = root.count("render_settings")
-    ? optional<RenderSettingsCommand>{ParseRenderSettings(root.at("render_settings").AsMap())}
+    ? optional<RenderSettings>{ParseRenderSettings(root.at("render_settings").AsMap())}
     : nullopt;
 
   return TransportManagerCommands{
@@ -156,6 +156,18 @@ TransportManagerCommands ReadCommands(istream& s) {
     routing_settings,
     render_settings,
   };
+}
+
+static std::string InsertEscapeCharacter(std::string str) {
+  for (auto it = begin(str); it != end(str); ++it) {
+    if (*it == '"' || *it == '\\') {
+      it = str.insert(it, '\\');
+      if (it != end(str)) {
+        ++it;
+      }
+    }
+  }
+  return str;
 }
 
 void PrintResults(std::ostream& output, const std::vector<StopInfo>& stop_info, const std::vector<BusInfo>& bus_info, const std::vector<RouteInfo>& route_data, const std::vector<MapDescription>& maps) {
@@ -175,7 +187,7 @@ void PrintResults(std::ostream& output, const std::vector<StopInfo>& stop_info, 
       bus_dict["stop_count"] = Node(static_cast<int>(bus.stop_count));
       bus_dict["unique_stop_count"] = Node(static_cast<int>(bus.unique_stop_count));
     }
-    result.push_back(Node(move(bus_dict)));
+    result.push_back(Node(bus_dict));
   }
 
   for (const auto& stop : stop_info) {
@@ -227,7 +239,15 @@ void PrintResults(std::ostream& output, const std::vector<StopInfo>& stop_info, 
       route_dict["items"] = items;
       route_dict["total_time"] = route.total_time;
     }
-    result.push_back(Node(move(route_dict)));
+    result.push_back(Node(route_dict));
+  }
+
+  for (const auto& map_description : maps) {
+    map<string, Node> map_dict = {
+      {"request_id", Node(map_description.request_id)},
+      {"map", Node(InsertEscapeCharacter(map_description.svg_map))},
+    };
+    result.push_back(Node(map_dict));
   }
 
   Node root{result};

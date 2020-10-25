@@ -5,15 +5,15 @@
 
 struct Coordinates {
 public:
-  long double latitude;
-  long double longitude;
+  double latitude;
+  double longitude;
 
-  static long double Distance(const Coordinates& lhs, const Coordinates& rhs);
+  static double Distance(const Coordinates& lhs, const Coordinates& rhs);
 
 private:
-  static constexpr const long double PI = 3.1415926535;
-  static constexpr const long double ONE_DEG = Coordinates::PI / 180;
-  static constexpr const long double EARTH_RADIUS = 6'371'000;
+  static constexpr const double PI = 3.1415926535;
+  static constexpr const double ONE_DEG = Coordinates::PI / 180;
+  static constexpr const double EARTH_RADIUS = 6'371'000;
 };
 
 struct Stop {

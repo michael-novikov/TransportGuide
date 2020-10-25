@@ -1,6 +1,6 @@
 #pragma once
 
-#include "svg/svg.h"
+#include "svg.h"
 
 #include <algorithm>
 #include <limits>
@@ -12,12 +12,12 @@
 #include <memory>
 #include <variant>
 
-struct RoutingSettingsCommand {
+struct RoutingSettings {
   unsigned int bus_wait_time;
   double bus_velocity;
 };
 
-struct RenderSettingsCommand {
+struct RenderSettings {
   double width;
   double height;
   double padding;
@@ -135,8 +135,8 @@ using OutCommand = std::variant<StopDescriptionCommand, BusDescriptionCommand, R
 struct TransportManagerCommands {
   std::vector<InCommand> input_commands;
   std::vector<OutCommand> output_commands;
-  RoutingSettingsCommand routing_settings;
-  std::optional<RenderSettingsCommand> render_settings;
+  RoutingSettings routing_settings;
+  std::optional<RenderSettings> render_settings;
 };
 
 struct StopInfo {
@@ -175,5 +175,6 @@ struct RouteInfo {
 };
 
 struct MapDescription {
+  int request_id;
   std::string svg_map;
 };

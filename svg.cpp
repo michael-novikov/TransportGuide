@@ -1,5 +1,7 @@
 #include "svg.h"
 
+#include <sstream>
+
 namespace Svg {
 
 void RenderColor(std::ostream& out, std::monostate) {
@@ -133,6 +135,12 @@ void Document::Render(std::ostream& out) const {
   }
 
   out << "</svg>";
+}
+
+std::string Document::ToString() const {
+  std::ostringstream out;
+  Render(out);
+  return out.str();
 }
 
 } // namespace Svg

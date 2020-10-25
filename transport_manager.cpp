@@ -1,4 +1,5 @@
 #include "transport_manager.h"
+
 #include "bus.h"
 #include "graph.h"
 #include "stop.h"
@@ -16,23 +17,23 @@
 using namespace std;
 
 void TransportManager::InitStop(const string& name) {
-  if (!stop_idx.count(name) || (stop_idx.count(name) && stops_[stop_idx[name]].Name() != name)) {
+  if (!stop_idx_.count(name) || (stop_idx_.count(name) && stops_[stop_idx_[name]].Name() != name)) {
     stops_.emplace_back(name);
-    stop_idx[name] = stops_.size() - 1;
+    stop_idx_[name] = stops_.size() - 1;
   }
 }
 
 void TransportManager::AddStop(const string& name, double latitude, double longitude, const unordered_map<string, unsigned int>& distances) {
   InitStop(name);
 
-  size_t id = stop_idx[name];
+  size_t id = stop_idx_[name];
   stops_[id].SetCoordinates(Coordinates{latitude, longitude});
 
   for (const auto& [stop_name, dist] : distances) {
     InitStop(stop_name);
-    distances_[id][stop_idx[stop_name]] = dist;
-    if (!distances_[stop_idx[stop_name]].count(id) || (distances_[stop_idx[stop_name]].count(id) && distances_[stop_idx[stop_name]][id] == 0)) {
-      distances_[stop_idx[stop_name]][id] = dist;
+    distances_[id][stop_idx_[stop_name]] = dist;
+    if (!distances_[stop_idx_[stop_name]].count(id) || (distances_[stop_idx_[stop_name]].count(id) && distances_[stop_idx_[stop_name]][id] == 0)) {
+      distances_[stop_idx_[stop_name]][id] = dist;
     }
   }
 }
@@ -56,13 +57,13 @@ std::pair<unsigned int, double> TransportManager::ComputeBusRouteLength(const Ro
   vector<const Stop*> bus_stops;
   for (const auto& stop_name : buses_[route_number].Stops()) {
     InitStop(stop_name);
-    bus_stops.push_back(&stops_[stop_idx[stop_name]]);
+    bus_stops.push_back(&stops_[stop_idx_[stop_name]]);
   }
 
   for (size_t i = 0; i < bus_stops.size() - 1; ++i) {
     distance_direct += Coordinates::Distance(bus_stops[i]->StopCoordinates(),
                                              bus_stops[i + 1]->StopCoordinates());
-    distance_road += distances_[stop_idx[bus_stops[i]->Name()]][stop_idx[bus_stops[i + 1]->Name()]];
+    distance_road += distances_[stop_idx_[bus_stops[i]->Name()]][stop_idx_[bus_stops[i + 1]->Name()]];
   }
 
   buses_[route_number].SetRouteLength(distance_road, distance_direct);
@@ -70,7 +71,7 @@ std::pair<unsigned int, double> TransportManager::ComputeBusRouteLength(const Ro
 }
 
 StopInfo TransportManager::GetStopInfo(const string& stop_name, int request_id) {
-  if (!stop_idx.count(stop_name)) {
+  if (!stop_idx_.count(stop_name)) {
     return StopInfo{
       .request_id = request_id,
       .error_message = "not found",
@@ -132,10 +133,10 @@ void TransportManager::CreateRoutes() {
       double time_sum{0.0};
       unsigned int span_count{0};
       for (size_t j = i + 1; j < bus_stops.size(); ++j) {
-        time_sum += distances_[stop_idx[bus_stops[j - 1]]][stop_idx[bus_stops[j]]] / (routing_settings_.bus_velocity * 1000 / 60);
+        time_sum += distances_[stop_idx_[bus_stops[j - 1]]][stop_idx_[bus_stops[j]]] / (routing_settings_.bus_velocity * 1000 / 60);
         road_graph->AddEdge(Graph::Edge<double>{
-            .from = 2 * stop_idx[bus_stops[i]] + 1,
-            .to = 2 * stop_idx[bus_stops[j]],
+            .from = 2 * stop_idx_[bus_stops[i]] + 1,
+            .to = 2 * stop_idx_[bus_stops[j]],
             .weight = time_sum
         });
         edge_description.push_back(BusActivity{
@@ -152,8 +153,8 @@ void TransportManager::CreateRoutes() {
 }
 
 RouteInfo TransportManager::GetRouteInfo(std::string from, std::string to, int request_id) {
-  size_t from_id = 2 * stop_idx[from];
-  size_t to_id = 2 * stop_idx[to];
+  size_t from_id = 2 * stop_idx_[from];
+  size_t to_id = 2 * stop_idx_[to];
   auto route_info = router->BuildRoute(from_id, to_id);
 
   if (!route_info.has_value()) {
@@ -177,7 +178,9 @@ RouteInfo TransportManager::GetRouteInfo(std::string from, std::string to, int r
   };
 }
 
-MapDescription TransportManager::GetMap() const {
-  string map;
-  return {map};
+MapDescription TransportManager::GetMap(int request_id) const {
+  return {
+    .request_id = request_id,
+    .svg_map = map_builder.BuildMap(stops_, stop_idx_, buses_),
+  };
 }

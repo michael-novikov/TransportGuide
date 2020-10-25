@@ -164,6 +164,7 @@ public:
   void Add(ShapeType shape);
 
   void Render(std::ostream& out) const;
+  std::string ToString() const;
 private:
   std::vector<std::unique_ptr<Shape>> shapes_;
 };

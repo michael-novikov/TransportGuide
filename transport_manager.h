@@ -5,38 +5,23 @@
 #include "transport_manager_command.h"
 #include "graph.h"
 #include "router.h"
+#include "map_builder.h"
 
 #include <string_view>
 #include <variant>
 #include <vector>
+#include <map>
 #include <unordered_map>
 #include <memory>
 #include <utility>
-
-struct RoutingSettings {
-  unsigned int bus_wait_time;
-  double bus_velocity;
-};
-
-struct RenderSettings {
-  double width;
-  double height;
-  double padding;
-  double stop_radius;
-  double line_width;
-  int stop_label_font_size;
-  Svg::Point stop_label_offset;
-  Svg::Color underlayer_color;
-  double underlayer_width;
-  std::vector<Svg::Color> color_palette;
-};
 
 class TransportManager {
 public:
   using RouteNumber = BusRoute::RouteNumber;
 
-  TransportManager(RoutingSettings routing_settings)
+  TransportManager(RoutingSettings routing_settings, RenderSettings render_settings)
     : routing_settings_(std::move(routing_settings))
+    , map_builder(std::move(render_settings))
   {
   }
 
@@ -49,17 +34,18 @@ public:
 
   void CreateRoutes();
   RouteInfo GetRouteInfo(std::string from, std::string to, int request_id);
+  MapDescription GetMap(int request_id) const;
 
-  MapDescription GetMap() const;
 private:
-  std::unordered_map<std::string, size_t> stop_idx;
+  std::map<std::string, size_t> stop_idx_;
   std::vector<Stop> stops_;
   std::unordered_map<size_t, std::unordered_map<size_t, unsigned int>> distances_;
-  std::unordered_map<RouteNumber, BusRoute> buses_;
+  std::map<RouteNumber, BusRoute> buses_;
   RoutingSettings routing_settings_;
   std::unique_ptr<Graph::DirectedWeightedGraph<double>> road_graph{nullptr};
   std::unique_ptr<Graph::Router<double>> router{nullptr};
   std::vector<std::variant<WaitActivity, BusActivity>> edge_description;
+  MapBuilder map_builder;
 
   void InitStop(const std::string& name);
 };
