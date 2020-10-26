@@ -145,6 +145,7 @@ public:
   Text& SetOffset(Point offset);
   Text& SetFontSize(uint32_t font_size);
   Text& SetFontFamily(const std::string& font_family);
+  Text& SetFontWeight(const std::string& font_weight);
   Text& SetData(const std::string& data);
 
   void Render(std::ostream& out) const;
@@ -153,6 +154,7 @@ private:
   Point offset_;
   uint32_t font_size_;
   std::optional<std::string> font_family_;
+  std::optional<std::string> font_weight_;
   std::string data_;
 };
 

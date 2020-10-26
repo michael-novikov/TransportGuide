@@ -99,6 +99,11 @@ Text& Text::SetFontFamily(const std::string& font_family) {
   return *this;
 }
 
+Text& Text::SetFontWeight(const std::string& font_weight) {
+  font_weight_ = font_weight;
+  return *this;
+}
+
 Text& Text::SetData(const std::string& data) {
   data_ = data;
   return *this;
@@ -119,6 +124,10 @@ void Text::Render(std::ostream& out) const {
 
   if (font_family_) {
     out << " " << "font-family" << "=\"" << font_family_.value() << "\"";
+  }
+
+  if (font_weight_) {
+    out << " " << "font-weight" << "=\"" << font_weight_.value() << "\"";
   }
 
   out << ">";

@@ -82,7 +82,62 @@ std::string MapBuilder::BuildMap(const std::vector<Stop>& stops,
     color_index = (color_index + 1) % render_settings_.color_palette.size();
   }
 
-  // 2. Draw stop circles
+  // 2. Draw route numbers
+  int route_no_color_index{0};
+  for (const auto& [bus_no, bus] : buses) {
+    const Color &stroke_color = render_settings_.color_palette[route_no_color_index];
+
+    auto create_bus_no_text = [&](string bus_no, const Stop& stop) -> Text {
+      const auto &coordinates = stop.StopCoordinates();
+
+      return Text{}
+          .SetPoint({
+            (coordinates.longitude - min_lon) * zoom_coef + render_settings_.padding,
+            (max_lat - coordinates.latitude) * zoom_coef + render_settings_.padding,
+          })
+          .SetOffset(render_settings_.bus_label_offset)
+          .SetFontSize(render_settings_.bus_label_font_size)
+          .SetFontFamily("Verdana")
+          .SetFontWeight("bold")
+          .SetData(bus_no);
+    };
+
+    const auto& first_stop = stops[stop_idx.at(bus.Stops().front())];
+    doc.Add(
+      create_bus_no_text(bus_no, first_stop)
+      .SetFillColor(render_settings_.underlayer_color)
+      .SetStrokeColor(render_settings_.underlayer_color)
+      .SetStrokeWidth(render_settings_.underlayer_width)
+      .SetStrokeLineCap("round")
+      .SetStrokeLineJoin("round")
+    );
+    doc.Add(
+      create_bus_no_text(bus_no, first_stop)
+      .SetFillColor(stroke_color)
+    );
+
+    const auto last_stop_idx = bus.Stops().size() / 2;
+    if (!bus.IsRoundTrip() && bus.Stops()[0] != bus.Stops()[last_stop_idx]) {
+      const auto& last_stop = stops[stop_idx.at(bus.Stops()[last_stop_idx])];
+      doc.Add(
+        create_bus_no_text(bus_no, last_stop)
+        .SetFillColor(render_settings_.underlayer_color)
+        .SetStrokeColor(render_settings_.underlayer_color)
+        .SetStrokeWidth(render_settings_.underlayer_width)
+        .SetStrokeLineCap("round")
+        .SetStrokeLineJoin("round")
+      );
+      doc.Add(
+        create_bus_no_text(bus_no, last_stop)
+        .SetFillColor(stroke_color)
+      );
+    }
+
+    route_no_color_index =
+        (route_no_color_index + 1) % render_settings_.color_palette.size();
+  }
+
+  // 3. Draw stop circles
   for (const auto& [stop_name, stop_id] : stop_idx) {
     const auto &coordinates = stops[stop_idx.at(stop_name)].StopCoordinates();
 
@@ -97,7 +152,7 @@ std::string MapBuilder::BuildMap(const std::vector<Stop>& stops,
     );
   }
 
-  // 3. Draw stop names
+  // 4. Draw stop names
   for (const auto& [stop_name, stop_id] : stop_idx) {
     const auto &coordinates = stops[stop_idx.at(stop_name)].StopCoordinates();
 

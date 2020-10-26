@@ -137,6 +137,12 @@ static RenderSettings ParseRenderSettings(const map<string, Node>& render_settin
                  back_inserter(render_settings.color_palette),
                  ParseColor);
 
+  render_settings.bus_label_font_size = render_settings_node.at("bus_label_font_size").AsInt();
+
+  const auto bus_label_offset_node = render_settings_node.at("bus_label_offset").AsArray();
+  render_settings.bus_label_offset = Svg::Point{bus_label_offset_node[0].AsDouble(),
+                                                bus_label_offset_node[1].AsDouble() };
+
   return render_settings;
 }
 
