@@ -2,6 +2,7 @@
 
 #include "bus.h"
 #include "graph.h"
+#include "map_builder.h"
 #include "stop.h"
 #include "transport_manager_command.h"
 
@@ -181,6 +182,6 @@ RouteInfo TransportManager::GetRouteInfo(std::string from, std::string to, int r
 MapDescription TransportManager::GetMap(int request_id) const {
   return {
     .request_id = request_id,
-    .svg_map = map_builder.BuildMap(stops_, stop_idx_, buses_),
+    .svg_map = MapBuilder{render_settings_, stops_, stop_idx_, buses_}.GetMap(),
   };
 }

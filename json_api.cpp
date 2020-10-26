@@ -143,6 +143,11 @@ static RenderSettings ParseRenderSettings(const map<string, Node>& render_settin
   render_settings.bus_label_offset = Svg::Point{bus_label_offset_node[0].AsDouble(),
                                                 bus_label_offset_node[1].AsDouble() };
 
+  const auto layers_node = render_settings_node.at("layers").AsArray();
+  for (const auto& layer_item : layers_node) {
+    render_settings.layers.push_back(MAP_LAYERS.at(layer_item.AsString()));
+  }
+
   return render_settings;
 }
 

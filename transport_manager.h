@@ -21,7 +21,7 @@ public:
 
   TransportManager(RoutingSettings routing_settings, RenderSettings render_settings)
     : routing_settings_(std::move(routing_settings))
-    , map_builder(std::move(render_settings))
+    , render_settings_(std::move(render_settings))
   {
   }
 
@@ -45,7 +45,7 @@ private:
   std::unique_ptr<Graph::DirectedWeightedGraph<double>> road_graph{nullptr};
   std::unique_ptr<Graph::Router<double>> router{nullptr};
   std::vector<std::variant<WaitActivity, BusActivity>> edge_description;
-  MapBuilder map_builder;
+  RenderSettings render_settings_;
 
   void InitStop(const std::string& name);
 };

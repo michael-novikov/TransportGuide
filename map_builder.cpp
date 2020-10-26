@@ -13,55 +13,79 @@ using namespace Svg;
 
 static const double EPS = 0.000001;
 
-MapBuilder::MapBuilder(RenderSettings render_settings)
+MapBuilder::MapBuilder(RenderSettings render_settings,
+                       const std::vector<Stop>& stops,
+                       const std::map<std::string, size_t>& stop_idx,
+                       const std::map<BusRoute::RouteNumber, BusRoute>& buses)
   : render_settings_(move(render_settings))
+  , stops_(stops)
+  , stop_idx_(stop_idx)
+  , buses_(buses)
 {
-}
-
-double MapBuilder::ComputeZoomCoef(const std::vector<Stop>& stops) const {
-  return 0;
-}
-
-std::string MapBuilder::BuildMap(const std::vector<Stop>& stops,
-                                 const std::map<std::string, size_t>& stop_idx,
-                                 const std::map<BusRoute::RouteNumber, BusRoute>& buses) const {
-  Document doc;
-
   auto [min_lat_it, max_lat_it] = minmax_element(begin(stops), end(stops),
       [](const Stop& lhs, const Stop& rhs) {
         return lhs.StopCoordinates().latitude < rhs.StopCoordinates().latitude;
       });
-  auto min_lat = min_lat_it->StopCoordinates().latitude;
-  auto max_lat = max_lat_it->StopCoordinates().latitude;
+  min_lat_ = min_lat_it->StopCoordinates().latitude;
+  max_lat_ = max_lat_it->StopCoordinates().latitude;
 
   auto [min_lon_it, max_lon_it] = minmax_element(begin(stops), end(stops),
       [](const Stop& lhs, const Stop& rhs) {
         return lhs.StopCoordinates().longitude < rhs.StopCoordinates().longitude;
       });
-  auto min_lon = min_lon_it->StopCoordinates().longitude;
-  auto max_lon = max_lon_it->StopCoordinates().longitude;
+  min_lon_ = min_lon_it->StopCoordinates().longitude;
+  max_lon_ = max_lon_it->StopCoordinates().longitude;
 
-  auto width_zoom_coef = [this](double min_lon, double max_lon) {
-    return (render_settings_.width - 2 * render_settings_.padding) / (max_lon - min_lon);
+  auto width_zoom_coef = [this]() {
+    return (render_settings_.width - 2 * render_settings_.padding) / (max_lon_ - min_lon_);
   };
-  auto height_zoom_coef = [this](double min_lat, double max_lat) {
-    return (render_settings_.height - 2 * render_settings_.padding) / (max_lat - min_lat);
+  auto height_zoom_coef = [this]() {
+    return (render_settings_.height - 2 * render_settings_.padding) / (max_lat_ - min_lat_);
   };
 
-  double zoom_coef;
-  if ((abs(max_lon - min_lon) < EPS) && (abs(max_lat - min_lat) < EPS)) {
-    zoom_coef = 0.0;
-  } else if (abs(max_lon - min_lon) < EPS) {
-    zoom_coef = height_zoom_coef(min_lat, max_lat);
-  } else if (abs(max_lat - min_lat) < EPS) {
-    zoom_coef = width_zoom_coef(min_lon, max_lon);
+  if ((abs(max_lon_ - min_lon_) < EPS) && (abs(max_lat_ - min_lat_) < EPS)) {
+    zoom_coef_ = 0.0;
+  } else if (abs(max_lon_ - min_lon_) < EPS) {
+    zoom_coef_ = height_zoom_coef();
+  } else if (abs(max_lat_ - min_lat_) < EPS) {
+    zoom_coef_ = width_zoom_coef();
   } else {
-    zoom_coef = min(width_zoom_coef(min_lon, max_lon), height_zoom_coef(min_lat, max_lat));
+    zoom_coef_ = min(width_zoom_coef(), height_zoom_coef());
   }
 
-  // 1. Draw route lines
+  BuildMap();
+}
+
+void MapBuilder::BuildMap() {
+  for (const auto& layer : render_settings_.layers) {
+    switch (layer) {
+      case MapLayer::BUS_LINES:
+        BuildBusLines();
+        break;
+      case MapLayer::BUS_LABELS:
+        BuildBusLabels();
+        break;
+      case MapLayer::STOP_POINTS:
+        BuildStopPoints();
+        break;
+      case MapLayer::STOP_LABELS:
+        BuildStopLabels();
+        break;
+    }
+  }
+}
+
+Svg::Point MapBuilder::MapStop(const std::string& stop_name) const {
+  const auto &coordinates = stops_[stop_idx_.at(stop_name)].StopCoordinates();
+  return {
+    (coordinates.longitude - min_lon_) * zoom_coef_ + render_settings_.padding,
+    (max_lat_ - coordinates.latitude) * zoom_coef_ + render_settings_.padding,
+  };
+}
+
+void MapBuilder::BuildBusLines() {
   int color_index{0};
-  for (const auto& [bus_no, bus] : buses) {
+  for (const auto& [bus_no, bus] : buses_) {
     const Color& stroke_color = render_settings_.color_palette[color_index];
 
     auto route_line = Polyline{}
@@ -71,30 +95,22 @@ std::string MapBuilder::BuildMap(const std::vector<Stop>& stops,
       .SetStrokeLineJoin("round");
 
     for (const auto& stop_name : bus.Stops()) {
-      const auto &coordinates = stops[stop_idx.at(stop_name)].StopCoordinates();
-      route_line.AddPoint({
-          (coordinates.longitude - min_lon) * zoom_coef + render_settings_.padding,
-          (max_lat - coordinates.latitude) * zoom_coef + render_settings_.padding,
-      });
+      route_line.AddPoint(MapStop(stop_name));
     }
 
-    doc.Add(route_line);
+    doc_.Add(route_line);
     color_index = (color_index + 1) % render_settings_.color_palette.size();
   }
+}
 
-  // 2. Draw route numbers
+void MapBuilder::BuildBusLabels() {
   int route_no_color_index{0};
-  for (const auto& [bus_no, bus] : buses) {
+  for (const auto& [bus_no, bus] : buses_) {
     const Color &stroke_color = render_settings_.color_palette[route_no_color_index];
 
-    auto create_bus_no_text = [&](string bus_no, const Stop& stop) -> Text {
-      const auto &coordinates = stop.StopCoordinates();
-
+    auto create_bus_no_text = [&](string bus_no, const string& stop_name) -> Text {
       return Text{}
-          .SetPoint({
-            (coordinates.longitude - min_lon) * zoom_coef + render_settings_.padding,
-            (max_lat - coordinates.latitude) * zoom_coef + render_settings_.padding,
-          })
+          .SetPoint(MapStop(stop_name))
           .SetOffset(render_settings_.bus_label_offset)
           .SetFontSize(render_settings_.bus_label_font_size)
           .SetFontFamily("Verdana")
@@ -102,8 +118,8 @@ std::string MapBuilder::BuildMap(const std::vector<Stop>& stops,
           .SetData(bus_no);
     };
 
-    const auto& first_stop = stops[stop_idx.at(bus.Stops().front())];
-    doc.Add(
+    const auto& first_stop = bus.Stops().front();
+    doc_.Add(
       create_bus_no_text(bus_no, first_stop)
       .SetFillColor(render_settings_.underlayer_color)
       .SetStrokeColor(render_settings_.underlayer_color)
@@ -111,15 +127,14 @@ std::string MapBuilder::BuildMap(const std::vector<Stop>& stops,
       .SetStrokeLineCap("round")
       .SetStrokeLineJoin("round")
     );
-    doc.Add(
+    doc_.Add(
       create_bus_no_text(bus_no, first_stop)
       .SetFillColor(stroke_color)
     );
 
-    const auto last_stop_idx = bus.Stops().size() / 2;
-    if (!bus.IsRoundTrip() && bus.Stops()[0] != bus.Stops()[last_stop_idx]) {
-      const auto& last_stop = stops[stop_idx.at(bus.Stops()[last_stop_idx])];
-      doc.Add(
+    const auto last_stop = bus.Stops()[bus.Stops().size() / 2];
+    if (!bus.IsRoundTrip() && first_stop != last_stop) {
+      doc_.Add(
         create_bus_no_text(bus_no, last_stop)
         .SetFillColor(render_settings_.underlayer_color)
         .SetStrokeColor(render_settings_.underlayer_color)
@@ -127,7 +142,7 @@ std::string MapBuilder::BuildMap(const std::vector<Stop>& stops,
         .SetStrokeLineCap("round")
         .SetStrokeLineJoin("round")
       );
-      doc.Add(
+      doc_.Add(
         create_bus_no_text(bus_no, last_stop)
         .SetFillColor(stroke_color)
       );
@@ -136,38 +151,30 @@ std::string MapBuilder::BuildMap(const std::vector<Stop>& stops,
     route_no_color_index =
         (route_no_color_index + 1) % render_settings_.color_palette.size();
   }
+}
 
-  // 3. Draw stop circles
-  for (const auto& [stop_name, stop_id] : stop_idx) {
-    const auto &coordinates = stops[stop_idx.at(stop_name)].StopCoordinates();
-
-    doc.Add(
+void MapBuilder::BuildStopPoints() {
+  for (const auto& [stop_name, stop_id] : stop_idx_) {
+    doc_.Add(
       Circle{}
-      .SetCenter({
-          (coordinates.longitude - min_lon) * zoom_coef + render_settings_.padding,
-          (max_lat - coordinates.latitude) * zoom_coef + render_settings_.padding,
-      })
+      .SetCenter(MapStop(stop_name))
       .SetRadius(render_settings_.stop_radius)
       .SetFillColor("white")
     );
   }
+}
 
-  // 4. Draw stop names
-  for (const auto& [stop_name, stop_id] : stop_idx) {
-    const auto &coordinates = stops[stop_idx.at(stop_name)].StopCoordinates();
-
+void MapBuilder::BuildStopLabels() {
+  for (const auto& [stop_name, stop_id] : stop_idx_) {
     const auto common =
       Text{}
-      .SetPoint({
-          (coordinates.longitude - min_lon) * zoom_coef + render_settings_.padding,
-          (max_lat - coordinates.latitude) * zoom_coef + render_settings_.padding,
-      })
+      .SetPoint(MapStop(stop_name))
       .SetOffset(render_settings_.stop_label_offset)
       .SetFontSize(render_settings_.stop_label_font_size)
       .SetFontFamily("Verdana")
       .SetData(stop_name);
 
-    doc.Add(
+    doc_.Add(
       Text{common}
       .SetFillColor(render_settings_.underlayer_color)
       .SetStrokeColor(render_settings_.underlayer_color)
@@ -176,11 +183,9 @@ std::string MapBuilder::BuildMap(const std::vector<Stop>& stops,
       .SetStrokeLineJoin("round")
     );
 
-    doc.Add(
+    doc_.Add(
       Text{common}
       .SetFillColor("black")
     );
   }
-
-  return doc.ToString();
 }

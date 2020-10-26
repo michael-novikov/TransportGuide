@@ -11,10 +11,25 @@
 #include <optional>
 #include <memory>
 #include <variant>
+#include <map>
 
 struct RoutingSettings {
   unsigned int bus_wait_time;
   double bus_velocity;
+};
+
+enum class MapLayer {
+  BUS_LINES,
+  BUS_LABELS,
+  STOP_POINTS,
+  STOP_LABELS,
+};
+
+const std::map<std::string, MapLayer> MAP_LAYERS = {
+  { "bus_lines", MapLayer::BUS_LINES },
+  { "bus_labels", MapLayer::BUS_LABELS },
+  { "stop_points", MapLayer::STOP_POINTS },
+  { "stop_labels", MapLayer::STOP_LABELS },
 };
 
 struct RenderSettings {
@@ -30,6 +45,7 @@ struct RenderSettings {
   std::vector<Svg::Color> color_palette;
   int bus_label_font_size;
   Svg::Point bus_label_offset;
+  std::vector<MapLayer> layers;
 };
 
 struct NewStopCommand {
