@@ -6,9 +6,12 @@
 
 #include <algorithm>
 #include <utility>
+#include <cstdlib>
 
 using namespace std;
 using namespace Svg;
+
+static const double EPS = 0.000001;
 
 MapBuilder::MapBuilder(RenderSettings render_settings)
   : render_settings_(move(render_settings))
@@ -28,24 +31,33 @@ std::string MapBuilder::BuildMap(const std::vector<Stop>& stops,
       [](const Stop& lhs, const Stop& rhs) {
         return lhs.StopCoordinates().latitude < rhs.StopCoordinates().latitude;
       });
+  auto min_lat = min_lat_it->StopCoordinates().latitude;
+  auto max_lat = max_lat_it->StopCoordinates().latitude;
 
   auto [min_lon_it, max_lon_it] = minmax_element(begin(stops), end(stops),
       [](const Stop& lhs, const Stop& rhs) {
         return lhs.StopCoordinates().longitude < rhs.StopCoordinates().longitude;
       });
-
-  auto min_lat = min_lat_it->StopCoordinates().latitude;
-  auto max_lat = max_lat_it->StopCoordinates().latitude;
   auto min_lon = min_lon_it->StopCoordinates().longitude;
   auto max_lon = max_lon_it->StopCoordinates().longitude;
 
-  double width_zoom_coef = max_lon - min_lon > 0 ?
-    (render_settings_.width - 2 * render_settings_.padding) / (max_lon - min_lon) : 0;
+  auto width_zoom_coef = [this](double min_lon, double max_lon) {
+    return (render_settings_.width - 2 * render_settings_.padding) / (max_lon - min_lon);
+  };
+  auto height_zoom_coef = [this](double min_lat, double max_lat) {
+    return (render_settings_.height - 2 * render_settings_.padding) / (max_lat - min_lat);
+  };
 
-  double height_zoom_coef = max_lat - min_lat > 0 ?
-    (render_settings_.height - 2 * render_settings_.padding) / (max_lat - min_lat) : 0;
-
-  double zoom_coef = min(width_zoom_coef, height_zoom_coef);
+  double zoom_coef;
+  if ((abs(max_lon - min_lon) < EPS) && (abs(max_lat - min_lat) < EPS)) {
+    zoom_coef = 0.0;
+  } else if (abs(max_lon - min_lon) < EPS) {
+    zoom_coef = height_zoom_coef(min_lat, max_lat);
+  } else if (abs(max_lat - min_lat) < EPS) {
+    zoom_coef = width_zoom_coef(min_lon, max_lon);
+  } else {
+    zoom_coef = min(width_zoom_coef(min_lon, max_lon), height_zoom_coef(min_lat, max_lat));
+  }
 
   // 1. Draw route lines
   int color_index{0};
