@@ -13,6 +13,13 @@ using namespace Svg;
 
 static const double EPS = 0.000001;
 
+const std::unordered_map<MapLayer, void (MapBuilder::*)(Svg::Document&) const> MapBuilder::build = {
+  { MapLayer::BUS_LINES, &MapBuilder::BuildBusLines },
+  { MapLayer::BUS_LABELS, &MapBuilder::BuildBusLabels },
+  { MapLayer::STOP_POINTS, &MapBuilder::BuildStopPoints },
+  { MapLayer::STOP_LABELS, &MapBuilder::BuildStopLabels },
+};
+
 MapBuilder::MapBuilder(RenderSettings render_settings,
                        const std::vector<Stop>& stops,
                        const std::map<std::string, size_t>& stop_idx,
@@ -53,26 +60,17 @@ MapBuilder::MapBuilder(RenderSettings render_settings,
     zoom_coef_ = min(width_zoom_coef(), height_zoom_coef());
   }
 
-  BuildMap();
+  doc_ = BuildMap();
 }
 
-void MapBuilder::BuildMap() {
+Svg::Document MapBuilder::BuildMap() {
+  Svg::Document doc;
+
   for (const auto& layer : render_settings_.layers) {
-    switch (layer) {
-      case MapLayer::BUS_LINES:
-        BuildBusLines();
-        break;
-      case MapLayer::BUS_LABELS:
-        BuildBusLabels();
-        break;
-      case MapLayer::STOP_POINTS:
-        BuildStopPoints();
-        break;
-      case MapLayer::STOP_LABELS:
-        BuildStopLabels();
-        break;
-    }
+    (this->*build.at(layer))(doc);
   }
+
+  return doc;
 }
 
 Svg::Point MapBuilder::MapStop(const std::string& stop_name) const {
@@ -83,7 +81,7 @@ Svg::Point MapBuilder::MapStop(const std::string& stop_name) const {
   };
 }
 
-void MapBuilder::BuildBusLines() {
+void MapBuilder::BuildBusLines(Svg::Document& doc) const {
   int color_index{0};
   for (const auto& [bus_no, bus] : buses_) {
     const Color& stroke_color = render_settings_.color_palette[color_index];
@@ -98,12 +96,12 @@ void MapBuilder::BuildBusLines() {
       route_line.AddPoint(MapStop(stop_name));
     }
 
-    doc_.Add(route_line);
+    doc.Add(route_line);
     color_index = (color_index + 1) % render_settings_.color_palette.size();
   }
 }
 
-void MapBuilder::BuildBusLabels() {
+void MapBuilder::BuildBusLabels(Svg::Document& doc) const {
   int route_no_color_index{0};
   for (const auto& [bus_no, bus] : buses_) {
     const Color &stroke_color = render_settings_.color_palette[route_no_color_index];
@@ -119,7 +117,7 @@ void MapBuilder::BuildBusLabels() {
     };
 
     const auto& first_stop = bus.Stops().front();
-    doc_.Add(
+    doc.Add(
       create_bus_no_text(bus_no, first_stop)
       .SetFillColor(render_settings_.underlayer_color)
       .SetStrokeColor(render_settings_.underlayer_color)
@@ -127,14 +125,14 @@ void MapBuilder::BuildBusLabels() {
       .SetStrokeLineCap("round")
       .SetStrokeLineJoin("round")
     );
-    doc_.Add(
+    doc.Add(
       create_bus_no_text(bus_no, first_stop)
       .SetFillColor(stroke_color)
     );
 
     const auto last_stop = bus.Stops()[bus.Stops().size() / 2];
     if (!bus.IsRoundTrip() && first_stop != last_stop) {
-      doc_.Add(
+      doc.Add(
         create_bus_no_text(bus_no, last_stop)
         .SetFillColor(render_settings_.underlayer_color)
         .SetStrokeColor(render_settings_.underlayer_color)
@@ -142,7 +140,7 @@ void MapBuilder::BuildBusLabels() {
         .SetStrokeLineCap("round")
         .SetStrokeLineJoin("round")
       );
-      doc_.Add(
+      doc.Add(
         create_bus_no_text(bus_no, last_stop)
         .SetFillColor(stroke_color)
       );
@@ -153,9 +151,9 @@ void MapBuilder::BuildBusLabels() {
   }
 }
 
-void MapBuilder::BuildStopPoints() {
+void MapBuilder::BuildStopPoints(Svg::Document& doc) const {
   for (const auto& [stop_name, stop_id] : stop_idx_) {
-    doc_.Add(
+    doc.Add(
       Circle{}
       .SetCenter(MapStop(stop_name))
       .SetRadius(render_settings_.stop_radius)
@@ -164,7 +162,7 @@ void MapBuilder::BuildStopPoints() {
   }
 }
 
-void MapBuilder::BuildStopLabels() {
+void MapBuilder::BuildStopLabels(Svg::Document& doc) const {
   for (const auto& [stop_name, stop_id] : stop_idx_) {
     const auto common =
       Text{}
@@ -174,7 +172,7 @@ void MapBuilder::BuildStopLabels() {
       .SetFontFamily("Verdana")
       .SetData(stop_name);
 
-    doc_.Add(
+    doc.Add(
       Text{common}
       .SetFillColor(render_settings_.underlayer_color)
       .SetStrokeColor(render_settings_.underlayer_color)
@@ -183,7 +181,7 @@ void MapBuilder::BuildStopLabels() {
       .SetStrokeLineJoin("round")
     );
 
-    doc_.Add(
+    doc.Add(
       Text{common}
       .SetFillColor("black")
     );

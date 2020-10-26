@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <unordered_map>
 
 class MapBuilder {
 public:
@@ -34,10 +35,12 @@ private:
 
   Svg::Point MapStop(const std::string& stop_name) const;
 
-  void BuildMap();
+  Svg::Document BuildMap();
 
-  void BuildBusLines();
-  void BuildBusLabels();
-  void BuildStopPoints();
-  void BuildStopLabels();
+  void BuildBusLines(Svg::Document& doc) const;
+  void BuildBusLabels(Svg::Document& doc) const;
+  void BuildStopPoints(Svg::Document& doc) const;
+  void BuildStopLabels(Svg::Document& doc) const;
+
+  static const std::unordered_map<MapLayer, void (MapBuilder::*)(Svg::Document&) const> build;
 };
