@@ -27,13 +27,20 @@ namespace Json {
       return std::get<int>(*this);
     }
     double AsDouble() const {
-      return std::get<double>(*this);
+      return std::holds_alternative<int>(*this) ? static_cast<double>(AsInt()) : std::get<double>(*this);
     }
     bool AsBool() const {
       return std::get<bool>(*this);
     }
     const auto& AsString() const {
       return std::get<std::string>(*this);
+    }
+
+    const bool IsArray() const {
+      return std::holds_alternative<std::vector<Node>>(*this);
+    }
+    const bool IsString() const {
+      return std::holds_alternative<std::string>(*this);
     }
   };
 

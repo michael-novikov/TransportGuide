@@ -1,6 +1,5 @@
 #include "bus.h"
 #include "transport_manager.h"
-
 #include "json_api.h"
 #include "stop.h"
 #include "transport_manager_command.h"
@@ -39,6 +38,7 @@ struct OutCommandHandler {
   vector<StopInfo> stop_info_data;
   vector<BusInfo> bus_info_data;
   vector<RouteInfo> route_data;
+  vector<MapDescription> map_data;
   TransportManager& manager_;
 
   void operator()(const StopDescriptionCommand &c) {
@@ -50,6 +50,9 @@ struct OutCommandHandler {
   void operator()(const RouteCommand &c) {
     route_data.push_back(manager_.GetRouteInfo(c.From(), c.To(), c.RequestId()));
   }
+  void operator()(const MapCommand &c) {
+    map_data.push_back(manager_.GetMap(c.RequestId()));
+  }
 };
 
 int main() {
@@ -59,7 +62,8 @@ int main() {
   TransportManagerCommands commands = JsonArgs::ReadCommands(input);
 
   TransportManager manager{
-    RoutingSettings{commands.routing_settings.bus_wait_time, commands.routing_settings.bus_velocity}
+    commands.routing_settings,
+    commands.render_settings.value_or(RenderSettings{}),
   };
 
   InCommandHandler in_handler{manager};
@@ -74,6 +78,6 @@ int main() {
     visit(out_handler, command);
   }
 
-  JsonArgs::PrintResults(out_handler.stop_info_data, out_handler.bus_info_data, out_handler.route_data, output);
+  JsonArgs::PrintResults(output, out_handler.stop_info_data, out_handler.bus_info_data, out_handler.route_data, out_handler.map_data);
   output << endl;
 }

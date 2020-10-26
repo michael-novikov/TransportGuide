@@ -1,4 +1,5 @@
 #include "bus.h"
+
 #include "stop.h"
 
 #include <algorithm>
@@ -12,20 +13,24 @@
 
 using namespace std;
 
-BusRoute::BusRoute(RouteNumber bus_no, vector<string> stops)
+BusRoute::BusRoute(RouteNumber bus_no, vector<string> stops, bool is_roundtrip)
   : number_(move(bus_no))
   , stops_(move(stops))
   , stop_names_(begin(stops_), end(stops_))
+  , is_roundtrip_(is_roundtrip)
 {
+  if (!is_roundtrip_) {
+    vector<string> cyclic_route{begin(stops_), end(stops_)};
+    cyclic_route.insert(end(cyclic_route), next(rbegin(stops_)), rend(stops_));
+    stops_ = move(cyclic_route);
+  }
 }
 
 BusRoute BusRoute::CreateRawBusRoute(RouteNumber bus_no,
                                      const std::vector<std::string>& stops) {
-  vector<string> cyclic_route{begin(stops), end(stops)};
-  cyclic_route.insert(end(cyclic_route), next(rbegin(stops)), rend(stops));
-  return {move(bus_no), move(cyclic_route)};
+  return {bus_no, stops, false};
 }
 
 BusRoute BusRoute::CreateCyclicBusRoute(RouteNumber bus_no, const std::vector<std::string>& stops) {
-  return {move(bus_no), stops};
+  return {bus_no, stops, true};
 }

@@ -8,6 +8,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer -fno-optimize-sibling-calls -O0")
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror")
+
 set(this_project transport_guide)
 
 set(utility ~/workspace/cpp-brown-belt/utility)
@@ -24,6 +26,8 @@ set(headers
   json_api.h
   graph.h
   router.h
+  svg.h
+  map_builder.h
   )
 
 set(sources
@@ -32,6 +36,8 @@ set(sources
   transport_manager.cpp
   json.cpp
   json_api.cpp
+  svg.cpp
+  map_builder.cpp
   ${this_project}.cpp
   )
 

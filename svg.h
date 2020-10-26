@@ -21,11 +21,19 @@ struct Rgb {
   std::uint8_t blue;
 };
 
-using Color = std::variant<std::monostate, Rgb, std::string>;
+struct Rgba {
+  std::uint8_t red;
+  std::uint8_t green;
+  std::uint8_t blue;
+  double alpha;
+};
+
+using Color = std::variant<std::monostate, Rgb, Rgba, std::string>;
 const Color NoneColor{};
 
 void RenderColor(std::ostream& out, std::monostate);
 void RenderColor(std::ostream& out, const Rgb& rgb);
+void RenderColor(std::ostream& out, const Rgba& rgb);
 void RenderColor(std::ostream& out, const std::string& name);
 void RenderColor(std::ostream& out, const Color& color);
 
@@ -137,6 +145,7 @@ public:
   Text& SetOffset(Point offset);
   Text& SetFontSize(uint32_t font_size);
   Text& SetFontFamily(const std::string& font_family);
+  Text& SetFontWeight(const std::string& font_weight);
   Text& SetData(const std::string& data);
 
   void Render(std::ostream& out) const;
@@ -145,6 +154,7 @@ private:
   Point offset_;
   uint32_t font_size_;
   std::optional<std::string> font_family_;
+  std::optional<std::string> font_weight_;
   std::string data_;
 };
 
@@ -156,6 +166,7 @@ public:
   void Add(ShapeType shape);
 
   void Render(std::ostream& out) const;
+  std::string ToString() const;
 private:
   std::vector<std::unique_ptr<Shape>> shapes_;
 };

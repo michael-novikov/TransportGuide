@@ -1,8 +1,16 @@
 #include "json_api.h"
 
 #include "json.h"
+#include "svg.h"
+#include "transport_manager.h"
 #include "transport_manager_command.h"
+
+#include <cstdint>
+#include <algorithm>
+#include <iterator>
+#include <optional>
 #include <variant>
+#include <stdexcept>
 
 using namespace std;
 using namespace Json;
@@ -14,12 +22,8 @@ InCommand ReadInputCommand(const Node& node) {
   auto type = command["type"].AsString();
   if (type == "Stop") {
     auto stop_name = command["name"].AsString();
-
-    const auto& latitude_node = command["latitude"];
-    double latitude = holds_alternative<int>(latitude_node) ? latitude_node.AsInt() : latitude_node.AsDouble();
-
-    const auto& longitude_node = command["longitude"];
-    double longitude = holds_alternative<int>(longitude_node) ? longitude_node.AsInt() : longitude_node.AsDouble();
+    double latitude = command["latitude"].AsDouble();
+    double longitude = command["longitude"].AsDouble();
 
     std::unordered_map<std::string, unsigned int> distances;
     auto distances_nodes = command["road_distances"].AsMap();
@@ -39,14 +43,14 @@ InCommand ReadInputCommand(const Node& node) {
     auto is_roundtrip = command["is_roundtrip"].AsBool();
     return NewBusCommand{route_number, stops, is_roundtrip};
   } else {
-    throw std::invalid_argument("Unsupported command");
+    throw invalid_argument("Unsupported command");
   }
 }
 
 OutCommand ReadOutputCommand(const Node& node) {
   auto command = node.AsMap();
   auto type = command["type"].AsString();
-  auto request_id = static_cast<size_t>(command["id"].AsInt());
+  auto request_id = command["id"].AsInt();
   if (type == "Stop") {
     auto stop_name = command["name"].AsString();
     return StopDescriptionCommand{stop_name, request_id};
@@ -57,42 +61,132 @@ OutCommand ReadOutputCommand(const Node& node) {
     auto from = command["from"].AsString();
     auto to = command["to"].AsString();
     return RouteCommand{from, to, request_id};
+  } else if (type == "Map") {
+    return MapCommand{request_id};
   } else {
-    throw std::invalid_argument("Unsupported command");
+    throw invalid_argument("Unsupported command");
   }
 }
 
-TransportManagerCommands ReadCommands(std::istream& s) {
-  TransportManagerCommands commands;
+static vector<InCommand> ParseBaseRequests(const vector<Node>& base_request_nodes) {
+  vector<InCommand> base_requests;
+  for (const auto& node : base_request_nodes) {
+    base_requests.push_back(ReadInputCommand(node));
+  }
+  return base_requests;
+}
 
+static vector<OutCommand> ParseStatRequests(const vector<Node>& stat_request_nodes) {
+  vector<OutCommand> stat_requests;
+  for (const auto& node : stat_request_nodes) {
+    stat_requests.push_back(ReadOutputCommand(node));
+  }
+  return stat_requests;
+}
+
+static RoutingSettings ParseRoutingSettings(const map<string, Node>& routing_settings_node) {
+  return {
+    static_cast<unsigned int>(routing_settings_node.at("bus_wait_time").AsInt()),
+    routing_settings_node.at("bus_velocity").AsDouble(),
+  };
+}
+
+static Svg::Color ParseColor(const Node& node) {
+  if (node.IsArray()) {
+    const auto color_array = node.AsArray();
+    if (color_array.size() == 4) {
+      return Svg::Rgba{
+        static_cast<uint8_t>(color_array[0].AsInt()),
+        static_cast<uint8_t>(color_array[1].AsInt()),
+        static_cast<uint8_t>(color_array[2].AsInt()),
+        color_array[3].AsDouble(),
+      };
+    }
+    else {
+      return Svg::Rgb{
+        static_cast<uint8_t>(color_array[0].AsInt()),
+        static_cast<uint8_t>(color_array[1].AsInt()),
+        static_cast<uint8_t>(color_array[2].AsInt()),
+      };
+    }
+  }
+  else {
+    return node.AsString();
+  }
+}
+
+static RenderSettings ParseRenderSettings(const map<string, Node>& render_settings_node) {
+  RenderSettings render_settings;
+
+  render_settings.width = render_settings_node.at("width").AsDouble();
+  render_settings.height = render_settings_node.at("height").AsDouble();
+  render_settings.padding = render_settings_node.at("padding").AsDouble();
+  render_settings.stop_radius = render_settings_node.at("stop_radius").AsDouble();
+  render_settings.line_width = render_settings_node.at("line_width").AsDouble();
+  render_settings.stop_label_font_size = render_settings_node.at("stop_label_font_size").AsInt();
+
+  const auto stop_label_offset_node = render_settings_node.at("stop_label_offset").AsArray();
+  render_settings.stop_label_offset = Svg::Point{stop_label_offset_node[0].AsDouble(),
+                                                 stop_label_offset_node[1].AsDouble() };
+
+  render_settings.underlayer_color = ParseColor(render_settings_node.at("underlayer_color"));
+  render_settings.underlayer_width = render_settings_node.at("underlayer_width").AsDouble();
+
+  const auto color_palette_node = render_settings_node.at("color_palette").AsArray();
+  std::transform(begin(color_palette_node), end(color_palette_node),
+                 back_inserter(render_settings.color_palette),
+                 ParseColor);
+
+  render_settings.bus_label_font_size = render_settings_node.at("bus_label_font_size").AsInt();
+
+  const auto bus_label_offset_node = render_settings_node.at("bus_label_offset").AsArray();
+  render_settings.bus_label_offset = Svg::Point{bus_label_offset_node[0].AsDouble(),
+                                                bus_label_offset_node[1].AsDouble() };
+
+  const auto layers_node = render_settings_node.at("layers").AsArray();
+  for (const auto& layer_item : layers_node) {
+    render_settings.layers.push_back(MAP_LAYERS.at(layer_item.AsString()));
+  }
+
+  return render_settings;
+}
+
+TransportManagerCommands ReadCommands(istream& s) {
   auto root = Load(s).GetRoot().AsMap();
 
-  auto base_requests = root["base_requests"].AsArray();
-  for (const auto& node : base_requests) {
-    commands.input_commands.push_back(ReadInputCommand(node));
-  }
+  auto base_requests = ParseBaseRequests(root.at("base_requests").AsArray());
+  auto stat_requests = ParseStatRequests(root.at("stat_requests").AsArray());
+  auto routing_settings = ParseRoutingSettings(root.at("routing_settings").AsMap());
+  auto render_settings = root.count("render_settings")
+    ? optional<RenderSettings>{ParseRenderSettings(root.at("render_settings").AsMap())}
+    : nullopt;
 
-  auto stat_requests = root["stat_requests"].AsArray();
-  for (const auto& node : stat_requests) {
-    commands.output_commands.push_back(ReadOutputCommand(node));
-  }
-
-  auto routing_settings = root["routing_settings"].AsMap();
-  commands.routing_settings.bus_wait_time = static_cast<unsigned int>(routing_settings["bus_wait_time"].AsInt());
-
-  auto bus_velocity_node = routing_settings["bus_velocity"];
-  commands.routing_settings.bus_velocity =
-    holds_alternative<int>(bus_velocity_node) ? bus_velocity_node.AsInt() : bus_velocity_node.AsDouble();
-
-  return commands;
+  return TransportManagerCommands{
+    base_requests,
+    stat_requests,
+    routing_settings,
+    render_settings,
+  };
 }
 
-void PrintResults(const std::vector<StopInfo>& stop_info, const std::vector<BusInfo>& bus_info, const std::vector<RouteInfo>& route_data, std::ostream& output) {
+static std::string InsertEscapeCharacter(std::string str) {
+  for (auto it = begin(str); it != end(str); ++it) {
+    if (*it == '"' || *it == '\\') {
+      it = str.insert(it, '\\');
+      if (it != end(str)) {
+        ++it;
+      }
+    }
+  }
+  return str;
+}
+
+void PrintResults(std::ostream& output, const std::vector<StopInfo>& stop_info, const std::vector<BusInfo>& bus_info, const std::vector<RouteInfo>& route_data, const std::vector<MapDescription>& maps) {
   vector<Node> result;
 
   for (const auto& bus : bus_info) {
     map<string, Node> bus_dict = {
-      {"request_id", Node(static_cast<int>(bus.request_id))},
+      {"request_id", Node(bus.request_id)},
     };
 
     if (bus.error_message.has_value()) {
@@ -104,12 +198,12 @@ void PrintResults(const std::vector<StopInfo>& stop_info, const std::vector<BusI
       bus_dict["stop_count"] = Node(static_cast<int>(bus.stop_count));
       bus_dict["unique_stop_count"] = Node(static_cast<int>(bus.unique_stop_count));
     }
-    result.push_back(Node(move(bus_dict)));
+    result.push_back(Node(bus_dict));
   }
 
   for (const auto& stop : stop_info) {
     map<string, Node> stop_dict = {
-      {"request_id", Node(static_cast<int>(stop.request_id))},
+      {"request_id", Node(stop.request_id)},
     };
 
     if (stop.error_message.has_value()) {
@@ -128,7 +222,7 @@ void PrintResults(const std::vector<StopInfo>& stop_info, const std::vector<BusI
 
   for (const auto& route : route_data) {
     map<string, Node> route_dict = {
-      {"request_id", Node(static_cast<int>(route.request_id))},
+      {"request_id", Node(route.request_id)},
     };
 
     if (route.error_message.has_value()) {
@@ -156,7 +250,15 @@ void PrintResults(const std::vector<StopInfo>& stop_info, const std::vector<BusI
       route_dict["items"] = items;
       route_dict["total_time"] = route.total_time;
     }
-    result.push_back(Node(move(route_dict)));
+    result.push_back(Node(route_dict));
+  }
+
+  for (const auto& map_description : maps) {
+    map<string, Node> map_dict = {
+      {"request_id", Node(map_description.request_id)},
+      {"map", Node(InsertEscapeCharacter(map_description.svg_map))},
+    };
+    result.push_back(Node(map_dict));
   }
 
   Node root{result};

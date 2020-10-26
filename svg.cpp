@@ -1,5 +1,7 @@
 #include "svg.h"
 
+#include <sstream>
+
 namespace Svg {
 
 void RenderColor(std::ostream& out, std::monostate) {
@@ -10,6 +12,13 @@ void RenderColor(std::ostream& out, const Rgb& rgb) {
   out << "rgb(" << static_cast<int>(rgb.red)
       << "," << static_cast<int>(rgb.green)
       << "," << static_cast<int>(rgb.blue) << ")";
+}
+
+void RenderColor(std::ostream& out, const Rgba& rgba) {
+  out << "rgba(" << static_cast<int>(rgba.red)
+      << "," << static_cast<int>(rgba.green)
+      << "," << static_cast<int>(rgba.blue)
+      << "," << rgba.alpha << ")";
 }
 
 void RenderColor(std::ostream& out, const std::string& name) {
@@ -90,6 +99,11 @@ Text& Text::SetFontFamily(const std::string& font_family) {
   return *this;
 }
 
+Text& Text::SetFontWeight(const std::string& font_weight) {
+  font_weight_ = font_weight;
+  return *this;
+}
+
 Text& Text::SetData(const std::string& data) {
   data_ = data;
   return *this;
@@ -112,6 +126,10 @@ void Text::Render(std::ostream& out) const {
     out << " " << "font-family" << "=\"" << font_family_.value() << "\"";
   }
 
+  if (font_weight_) {
+    out << " " << "font-weight" << "=\"" << font_weight_.value() << "\"";
+  }
+
   out << ">";
   out << data_;
   out << "</text>";
@@ -126,6 +144,12 @@ void Document::Render(std::ostream& out) const {
   }
 
   out << "</svg>";
+}
+
+std::string Document::ToString() const {
+  std::ostringstream out;
+  Render(out);
+  return out.str();
 }
 
 } // namespace Svg
