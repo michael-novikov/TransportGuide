@@ -11,8 +11,6 @@
 using namespace std;
 using namespace Svg;
 
-static const double EPS = 0.000001;
-
 const std::unordered_map<MapLayer, void (MapBuilder::*)(Svg::Document&) const> MapBuilder::build = {
   { MapLayer::BUS_LINES, &MapBuilder::BuildBusLines },
   { MapLayer::BUS_LABELS, &MapBuilder::BuildBusLabels },
@@ -25,39 +23,33 @@ MapBuilder::MapBuilder(RenderSettings render_settings,
                        const std::map<std::string, size_t>& stop_idx,
                        const std::map<BusRoute::RouteNumber, BusRoute>& buses)
   : render_settings_(move(render_settings))
-  , stops_(stops)
   , stop_idx_(stop_idx)
   , buses_(buses)
+  , sorted_lon_(stops)
+  , sorted_lat_(stops)
 {
-  auto [min_lat_it, max_lat_it] = minmax_element(begin(stops), end(stops),
-      [](const Stop& lhs, const Stop& rhs) {
-        return lhs.StopCoordinates().latitude < rhs.StopCoordinates().latitude;
-      });
-  min_lat_ = min_lat_it->StopCoordinates().latitude;
-  max_lat_ = max_lat_it->StopCoordinates().latitude;
-
-  auto [min_lon_it, max_lon_it] = minmax_element(begin(stops), end(stops),
+  sort(begin(sorted_lon_), end(sorted_lon_),
       [](const Stop& lhs, const Stop& rhs) {
         return lhs.StopCoordinates().longitude < rhs.StopCoordinates().longitude;
       });
-  min_lon_ = min_lon_it->StopCoordinates().longitude;
-  max_lon_ = max_lon_it->StopCoordinates().longitude;
+  for (size_t i = 0; i < sorted_lon_.size(); ++i) {
+    sorted_lon_idx_[sorted_lon_[i].Name()] = i;
+  }
 
-  auto width_zoom_coef = [this]() {
-    return (render_settings_.width - 2 * render_settings_.padding) / (max_lon_ - min_lon_);
-  };
-  auto height_zoom_coef = [this]() {
-    return (render_settings_.height - 2 * render_settings_.padding) / (max_lat_ - min_lat_);
-  };
+  sort(begin(sorted_lat_), end(sorted_lat_),
+      [](const Stop& lhs, const Stop& rhs) {
+        return lhs.StopCoordinates().latitude < rhs.StopCoordinates().latitude;
+      });
+  for (size_t i = 0; i < sorted_lat_.size(); ++i) {
+    sorted_lat_idx_[sorted_lat_[i].Name()] = i;
+  }
 
-  if ((abs(max_lon_ - min_lon_) < EPS) && (abs(max_lat_ - min_lat_) < EPS)) {
-    zoom_coef_ = 0.0;
-  } else if (abs(max_lon_ - min_lon_) < EPS) {
-    zoom_coef_ = height_zoom_coef();
-  } else if (abs(max_lat_ - min_lat_) < EPS) {
-    zoom_coef_ = width_zoom_coef();
-  } else {
-    zoom_coef_ = min(width_zoom_coef(), height_zoom_coef());
+  if (sorted_lon_.size() > 1) {
+    x_step = (render_settings_.width - 2 * render_settings_.padding) / (sorted_lon_.size() - 1);
+  }
+
+  if (sorted_lat_.size() > 1) {
+    y_step = (render_settings_.height - 2 * render_settings_.padding) / (sorted_lat_.size() - 1);
   }
 
   doc_ = BuildMap();
@@ -74,10 +66,9 @@ Svg::Document MapBuilder::BuildMap() {
 }
 
 Svg::Point MapBuilder::MapStop(const std::string& stop_name) const {
-  const auto &coordinates = stops_[stop_idx_.at(stop_name)].StopCoordinates();
   return {
-    (coordinates.longitude - min_lon_) * zoom_coef_ + render_settings_.padding,
-    (max_lat_ - coordinates.latitude) * zoom_coef_ + render_settings_.padding,
+    sorted_lon_idx_.at(stop_name) * x_step + render_settings_.padding,
+    render_settings_.height - render_settings_.padding - sorted_lat_idx_.at(stop_name) * y_step,
   };
 }
 
