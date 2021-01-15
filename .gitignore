@@ -13,3 +13,4 @@ build
 .clangd
 solution.zip
 *.swp
+.cache
