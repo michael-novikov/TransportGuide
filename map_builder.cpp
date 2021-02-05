@@ -4,6 +4,10 @@
 #include "stop.h"
 #include "svg.h"
 
+#include "projector_interface.h"
+#include "scanline_projection.h"
+#include "scanline_compressed_projection.h"
+
 #include <algorithm>
 #include <utility>
 #include <cstdlib>
@@ -11,12 +15,30 @@
 using namespace std;
 using namespace Svg;
 
-const std::unordered_map<MapLayer, void (MapBuilder::*)(Svg::Document&) const> MapBuilder::build = {
-  { MapLayer::BUS_LINES, &MapBuilder::BuildBusLines },
-  { MapLayer::BUS_LABELS, &MapBuilder::BuildBusLabels },
-  { MapLayer::STOP_POINTS, &MapBuilder::BuildStopPoints },
-  { MapLayer::STOP_LABELS, &MapBuilder::BuildStopLabels },
-};
+static map<string, Svg::Point> ComputeStopsCoords(
+    RenderSettings render_settings,
+    const std::vector<Stop>& stops,
+    const std::map<std::string, size_t>& stop_idx,
+    const std::map<BusRoute::RouteNumber, BusRoute>& buses) {
+  vector<Coordinates> points;
+  transform(begin(stops), end(stops), back_inserter(points),
+      [](const Stop& stop) { return stop.StopCoordinates(); }
+  );
+
+  const double max_width = render_settings.width;
+  const double max_height = render_settings.height;
+  const double padding = render_settings.padding;
+
+  const unique_ptr<Projector> projector = make_unique<ScanlineCompressedProjector>(
+      points, stop_idx, buses, max_width, max_height, padding
+  );
+
+  map<string, Svg::Point> stops_coords;
+  for (const auto& stop : stops) {
+    stops_coords[stop.Name()] = projector->project(stop.StopCoordinates());
+  }
+  return stops_coords;
+}
 
 MapBuilder::MapBuilder(RenderSettings render_settings,
                        const std::vector<Stop>& stops,
@@ -25,34 +47,9 @@ MapBuilder::MapBuilder(RenderSettings render_settings,
   : render_settings_(move(render_settings))
   , stop_idx_(stop_idx)
   , buses_(buses)
-  , sorted_lon_(stops)
-  , sorted_lat_(stops)
+  , stop_coordinates_(ComputeStopsCoords(render_settings_, stops, stop_idx_, buses))
+  , doc_(BuildMap())
 {
-  sort(begin(sorted_lon_), end(sorted_lon_),
-      [](const Stop& lhs, const Stop& rhs) {
-        return lhs.StopCoordinates().longitude < rhs.StopCoordinates().longitude;
-      });
-  for (size_t i = 0; i < sorted_lon_.size(); ++i) {
-    sorted_lon_idx_[sorted_lon_[i].Name()] = i;
-  }
-
-  sort(begin(sorted_lat_), end(sorted_lat_),
-      [](const Stop& lhs, const Stop& rhs) {
-        return lhs.StopCoordinates().latitude < rhs.StopCoordinates().latitude;
-      });
-  for (size_t i = 0; i < sorted_lat_.size(); ++i) {
-    sorted_lat_idx_[sorted_lat_[i].Name()] = i;
-  }
-
-  if (sorted_lon_.size() > 1) {
-    x_step = (render_settings_.width - 2 * render_settings_.padding) / (sorted_lon_.size() - 1);
-  }
-
-  if (sorted_lat_.size() > 1) {
-    y_step = (render_settings_.height - 2 * render_settings_.padding) / (sorted_lat_.size() - 1);
-  }
-
-  doc_ = BuildMap();
 }
 
 Svg::Document MapBuilder::BuildMap() {
@@ -66,10 +63,7 @@ Svg::Document MapBuilder::BuildMap() {
 }
 
 Svg::Point MapBuilder::MapStop(const std::string& stop_name) const {
-  return {
-    sorted_lon_idx_.at(stop_name) * x_step + render_settings_.padding,
-    render_settings_.height - render_settings_.padding - sorted_lat_idx_.at(stop_name) * y_step,
-  };
+  return stop_coordinates_.at(stop_name);
 }
 
 void MapBuilder::BuildBusLines(Svg::Document& doc) const {
@@ -178,3 +172,10 @@ void MapBuilder::BuildStopLabels(Svg::Document& doc) const {
     );
   }
 }
+
+const std::unordered_map<MapLayer, void (MapBuilder::*)(Svg::Document&) const> MapBuilder::build = {
+  { MapLayer::BUS_LINES, &MapBuilder::BuildBusLines },
+  { MapLayer::BUS_LABELS, &MapBuilder::BuildBusLabels },
+  { MapLayer::STOP_POINTS, &MapBuilder::BuildStopPoints },
+  { MapLayer::STOP_LABELS, &MapBuilder::BuildStopLabels },
+};
