@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 #include <sstream>
@@ -24,6 +25,13 @@ BusRoute::BusRoute(RouteNumber bus_no, vector<string> stops, bool is_roundtrip)
     cyclic_route.insert(end(cyclic_route), next(rbegin(stops_)), rend(stops_));
     stops_ = move(cyclic_route);
   }
+}
+
+std::pair<std::string, std::optional<std::string>> BusRoute::Endpoints() const {
+  return {
+    Stops().front(),
+    IsRoundTrip() ? optional<string>{}: Stops()[Stops().size() / 2]
+  };
 }
 
 BusRoute BusRoute::CreateRawBusRoute(RouteNumber bus_no,

@@ -16,18 +16,16 @@ ScanlineCompressedProjector::ScanlineCompressedProjector(
     return;
   }
 
-    std::map<Coordinates, std::set<Coordinates, LonComparator>, LonComparator> route_neighbours_;
-    for (const auto& [bus_name, bus] : buses) {
-      const auto& bus_stops = bus.Stops();
-      for (int i = 1; i < bus_stops.size(); ++i) {
-        route_neighbours_[points[stop_idx.at(bus_stops[i-1])]].insert(
-          points[stop_idx.at(bus_stops[i])]
-        );
-        route_neighbours_[points[stop_idx.at(bus_stops[i])]].insert(
-          points[stop_idx.at(bus_stops[i-1])]
-        );
-      }
+  std::map<Coordinates, std::set<Coordinates>> route_neighbours_;
+  for (const auto& [bus_name, bus] : buses) {
+    const auto& bus_stops = bus.Stops();
+    for (int i = 1; i < bus_stops.size(); ++i) {
+      const auto& cur = points[stop_idx.at(bus_stops[i])];
+      const auto& prev = points[stop_idx.at(bus_stops[i-1])];
+      route_neighbours_[prev].insert(cur);
+      route_neighbours_[cur].insert(prev);
     }
+  }
 
   {
     for (const auto& p : points) {

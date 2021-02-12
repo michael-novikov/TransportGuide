@@ -18,11 +18,13 @@ public:
   BusRoute() = default;
 
   RouteNumber Number() const { return number_; }
+  const auto& Stop(size_t i) const { return stops_[i]; }
   const auto& Stops() const { return stops_; }
   size_t UniqueStopNumber() const { return stop_names_.size(); }
   bool IsRoundTrip() const { return is_roundtrip_; }
   std::optional<std::pair<double, double>> RouteLength() const { return route_length_; }
   bool ContainsStop(const std::string& stop_name) const { return stop_names_.count(stop_name); }
+  std::pair<std::string, std::optional<std::string>> Endpoints() const;
 
   void SetRouteLength(size_t road_length, double direct_length) { route_length_ = {road_length, direct_length}; }
 

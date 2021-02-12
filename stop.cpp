@@ -25,3 +25,8 @@ double Coordinates::Distance(const Coordinates& lhs, const Coordinates& rhs) {
 
   return ans;
 }
+
+bool operator<(const Coordinates& lhs, const Coordinates& rhs) {
+  return (lhs.longitude < rhs.longitude)
+      || ((lhs.longitude == rhs.longitude) && (lhs.latitude < rhs.latitude));
+}

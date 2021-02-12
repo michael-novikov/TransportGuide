@@ -16,12 +16,16 @@ private:
   static constexpr const double EARTH_RADIUS = 6'371'000;
 };
 
+bool operator<(const Coordinates& lhs, const Coordinates& rhs);
+
 struct Stop {
 public:
   Stop(std::string name, Coordinates coordinates = {});
   Stop() = default;
+  Stop(const Stop& other) = default;
   std::string Name() const { return name_; }
-  Coordinates StopCoordinates() const { return coordinates_; }
+  const Coordinates& StopCoordinates() const { return coordinates_; }
+  Coordinates& StopCoordinates() { return coordinates_; }
   void SetCoordinates(Coordinates coordinates) { coordinates_ = coordinates; }
 
 private:
