@@ -33,21 +33,15 @@ ScanlineCompressedProjector::ScanlineCompressedProjector(
     }
 
     size_t i{0};
-    std::set<Coordinates, LonComparator> group;
-    for (auto& [point, idx] : sorted_by_lon_) {
-      bool neigbour{false};
-      for (const auto& p : group) {
-        if (route_neighbours_[point].count(p)) {
-          neigbour = true;
-          break;
+    for (auto it = next(begin(sorted_by_lon_)); it != end(sorted_by_lon_); ++it) {
+      std::set<size_t> neigbour_idx = {};
+      for (auto it_prev = begin(sorted_by_lon_); it_prev != it; ++it_prev) {
+        if (route_neighbours_[it->first].count(it_prev->first)) {
+          neigbour_idx.insert(it_prev->second);
         }
       }
-      if (neigbour) {
-        i++;
-        group.clear();
-      }
-      idx = i;
-      group.insert(point);
+      it->second = neigbour_idx.empty() ? 0 : *neigbour_idx.rbegin() + 1;
+      i = std::max(i, it->second);
     }
 
     if (sorted_by_lon_.size() > 1) {
@@ -61,21 +55,15 @@ ScanlineCompressedProjector::ScanlineCompressedProjector(
     }
 
     size_t i{0};
-    std::set<Coordinates, LonComparator> group;
-    for (auto& [point, idx] : sorted_by_lat_) {
-      bool neigbour{false};
-      for (const auto& p : group) {
-        if (route_neighbours_[point].count(p)) {
-          neigbour = true;
-          break;
+    for (auto it = next(begin(sorted_by_lat_)); it != end(sorted_by_lat_); ++it) {
+      std::set<size_t> neigbour_idx = {};
+      for (auto it_prev = begin(sorted_by_lat_); it_prev != it; ++it_prev) {
+        if (route_neighbours_[it->first].count(it_prev->first)) {
+          neigbour_idx.insert(it_prev->second);
         }
       }
-      if (neigbour) {
-        i++;
-        group.clear();
-      }
-      idx = i;
-      group.insert(point);
+      it->second = neigbour_idx.empty() ? 0 : *neigbour_idx.rbegin() + 1;
+      i = std::max(i, it->second);
     }
 
     if (sorted_by_lat_.size() > 1) {
