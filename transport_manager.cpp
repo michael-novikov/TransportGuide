@@ -176,6 +176,7 @@ RouteInfo TransportManager::GetRouteInfo(std::string from, std::string to, int r
     .request_id = request_id,
     .total_time = route_info.value().weight,
     .items = items,
+    .svg_map = MapBuilder{render_settings_, stops_, stop_idx_, buses_}.GetRouteMap(items),
   };
 }
 

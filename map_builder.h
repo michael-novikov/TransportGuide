@@ -18,6 +18,7 @@ public:
              const std::map<BusRoute::RouteNumber, BusRoute>& buses);
 
   std::string GetMap() const { return doc_.ToString(); }
+  std::string GetRouteMap(const RouteInfo::Route &route) const { return doc_.ToString(); }
 
 private:
   RenderSettings render_settings_;

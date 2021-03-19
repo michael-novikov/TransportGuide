@@ -249,6 +249,7 @@ void PrintResults(std::ostream& output, const std::vector<StopInfo>& stop_info, 
       }
       route_dict["items"] = items;
       route_dict["total_time"] = route.total_time;
+      route_dict["map"] = Node(InsertEscapeCharacter(route.svg_map));
     }
     result.push_back(Node(route_dict));
   }

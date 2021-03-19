@@ -186,10 +186,13 @@ struct BusActivity {
 };
 
 struct RouteInfo {
+  using Route = std::vector<std::variant<WaitActivity, BusActivity>>;
+
   int request_id;
   double total_time;
-  std::vector<std::variant<WaitActivity, BusActivity>> items;
+  Route items;
   std::optional<std::string> error_message;
+  std::string svg_map;
 };
 
 struct MapDescription {
