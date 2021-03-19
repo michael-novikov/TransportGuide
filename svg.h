@@ -120,6 +120,19 @@ void ShapeProperties<Owner>::RenderProperties(std::ostream& out) const {
   }
 }
 
+class Rectangle : public Shape, public ShapeProperties<Rectangle> {
+public:
+  Rectangle& SetBasePoint(Point p);
+  Rectangle& SetWidth(double w);
+  Rectangle& SetHeight(double h);
+
+  void Render(std::ostream& out) const;
+private:
+  Point base_point_{0.0, 0.0};
+  double w_{1.0};
+  double h_{1.0};
+};
+
 class Circle : public Shape, public ShapeProperties<Circle> {
 public:
   Circle& SetCenter(Point center);
