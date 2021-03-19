@@ -51,6 +51,7 @@ public:
   Owner& SetStrokeWidth(double stroke_width);
   Owner& SetStrokeLineCap(const std::string& stroke_linecap);
   Owner& SetStrokeLineJoin(const std::string& stroke_linejoin);
+  Owner& SetOuterMargin(double outer_margin);
 
   Owner& AsOwner();
 
@@ -62,6 +63,7 @@ private:
   double stroke_width_{1.0};
   std::optional<std::string> stroke_linecap_;
   std::optional<std::string> stroke_linejoin_;
+  std::optional<double> outer_margin_;
 };
 
 template <typename Owner>
@@ -91,6 +93,12 @@ Owner& ShapeProperties<Owner>::SetStrokeLineCap(const std::string& stroke_lineca
 template <typename Owner>
 Owner& ShapeProperties<Owner>::SetStrokeLineJoin(const std::string& stroke_linejoin) {
   stroke_linejoin_ = stroke_linejoin;
+  return AsOwner();
+}
+
+template <typename Owner>
+Owner& ShapeProperties<Owner>::SetOuterMargin(double outer_margin) {
+  outer_margin_ = outer_margin;
   return AsOwner();
 }
 
