@@ -9,7 +9,9 @@
 #include "scanline_projection.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdlib>
+#include <iterator>
 #include <set>
 #include <utility>
 
@@ -122,12 +124,21 @@ MapBuilder::MapBuilder(RenderSettings render_settings,
                        const std::vector<Stop> &stops,
                        const std::map<std::string, size_t> &stop_idx,
                        const std::map<BusRoute::RouteNumber, BusRoute> &buses)
-    : render_settings_(move(render_settings)), stop_idx_(stop_idx),
-      buses_(buses), stop_coordinates_(ComputeStopsCoords(
-                         render_settings_, stops, stop_idx_, buses)),
-      doc_(BuildMap()) {}
+    : render_settings_(move(render_settings))
+    , stop_idx_(stop_idx)
+    , buses_(buses)
+    , stop_coordinates_(ComputeStopsCoords(render_settings_, stops, stop_idx_, buses))
+{
+  int color_idx{0};
+  for (const auto &[bus_no, bus] : buses_) {
+    route_color[bus_no] = render_settings_.color_palette[color_idx];
+    color_idx = (color_idx + 1) % render_settings_.color_palette.size();
+  }
 
-Svg::Document MapBuilder::BuildMap() {
+  doc_ = BuildMap();
+}
+
+Svg::Document MapBuilder::BuildMap() const {
   Svg::Document doc;
 
   for (const auto &layer : render_settings_.layers) {
@@ -137,83 +148,197 @@ Svg::Document MapBuilder::BuildMap() {
   return doc;
 }
 
+void MapBuilder::BuildTranslucentRoute(Svg::Document &doc) const {
+  doc.Add(
+    Rectangle{}
+      .SetBasePoint({-render_settings_.outer_margin, -render_settings_.outer_margin})
+      .SetWidth(render_settings_.width + 2 * render_settings_.outer_margin)
+      .SetHeight(render_settings_.height + 2 * render_settings_.outer_margin)
+      .SetFillColor(render_settings_.underlayer_color)
+  );
+}
+
+Svg::Document MapBuilder::BuildRoute(const RouteInfo::Route &route) const {
+  auto res = BuildMap();
+  BuildTranslucentRoute(res);
+
+  for (const auto &layer : render_settings_.layers) {
+    (this->*build_route.at(layer))(res, route);
+  }
+
+  return res;
+}
+
 Svg::Point MapBuilder::MapStop(const std::string &stop_name) const {
   return stop_coordinates_.at(stop_name);
 }
 
-void MapBuilder::BuildBusLines(Svg::Document &doc) const {
-  int color_index{0};
-  for (const auto &[bus_no, bus] : buses_) {
-    const Color &stroke_color = render_settings_.color_palette[color_index];
-
+void MapBuilder::BuildBusLines(Svg::Document &doc,
+    const std::vector<std::pair<std::string, std::vector<std::string>>> &lines) const {
+  for (const auto &line : lines) {
     auto route_line = Polyline{}
-                          .SetStrokeColor(stroke_color)
+                          .SetStrokeColor(route_color.at(line.first))
                           .SetStrokeWidth(render_settings_.line_width)
                           .SetStrokeLineCap("round")
                           .SetStrokeLineJoin("round");
 
-    for (const auto &stop_name : bus.Stops()) {
+    for (const auto &stop_name : line.second) {
       route_line.AddPoint(MapStop(stop_name));
     }
-
     doc.Add(route_line);
-    color_index = (color_index + 1) % render_settings_.color_palette.size();
+  }
+}
+
+void MapBuilder::BuildBusLines(Svg::Document &doc) const {
+  vector<pair<string, vector<string>>> full_routes;
+  for (const auto &[bus_no, bus] : buses_) {
+    full_routes.emplace_back(bus_no, bus.Stops());
+  }
+  BuildBusLines(doc, full_routes);
+}
+
+void MapBuilder::BuildBusLinesOnRoute(Svg::Document &doc, const RouteInfo::Route &route) const {
+  vector<pair<string, vector<string>>> routes;
+
+  for (const auto& activity : route) {
+    if (holds_alternative<BusActivity>(activity)) {
+      auto bus_activity = get<BusActivity>(activity);
+      const auto& bus = buses_.at(bus_activity.bus);
+
+      vector<string> bus_stops;
+      copy_n(
+        next(begin(bus.Stops()), bus_activity.start_stop_idx),
+        bus_activity.span_count + 1,
+        back_inserter(bus_stops)
+      );
+      routes.emplace_back(bus.Number(), bus_stops);
+    }
+  }
+
+  BuildBusLines(doc, routes);
+}
+
+void MapBuilder::BuildBusLabels(Svg::Document &doc,
+                                const std::vector<std::pair<std::string, std::vector<Svg::Point>>> &labels) const {
+  auto create_bus_no_text = [&](string bus_no,
+                                const Svg::Point &point) -> Text {
+    return Text{}
+             .SetPoint(point)
+             .SetOffset(render_settings_.bus_label_offset)
+             .SetFontSize(render_settings_.bus_label_font_size)
+             .SetFontFamily("Verdana")
+             .SetFontWeight("bold")
+             .SetData(bus_no);
+  };
+
+  auto add_bus_label = [&](const string &label,
+                           const Svg::Point &point,
+                           const Color &stroke_color) {
+    doc.Add(create_bus_no_text(label, point)
+              .SetFillColor(render_settings_.underlayer_color)
+              .SetStrokeColor(render_settings_.underlayer_color)
+              .SetStrokeWidth(render_settings_.underlayer_width)
+              .SetStrokeLineCap("round")
+              .SetStrokeLineJoin("round"));
+    doc.Add(create_bus_no_text(label, point).SetFillColor(stroke_color));
+  };
+
+  for (const auto &label : labels) {
+    for (const auto &point : label.second) {
+      add_bus_label(label.first, point, route_color.at(label.first));
+    }
   }
 }
 
 void MapBuilder::BuildBusLabels(Svg::Document &doc) const {
-  int route_no_color_index{0};
+  vector<pair<string, vector<Svg::Point>>> labels;
   for (const auto &[bus_no, bus] : buses_) {
-    const Color &stroke_color =
-        render_settings_.color_palette[route_no_color_index];
-
-    auto create_bus_no_text = [&](string bus_no,
-                                  const string &stop_name) -> Text {
-      return Text{}
-          .SetPoint(MapStop(stop_name))
-          .SetOffset(render_settings_.bus_label_offset)
-          .SetFontSize(render_settings_.bus_label_font_size)
-          .SetFontFamily("Verdana")
-          .SetFontWeight("bold")
-          .SetData(bus_no);
-    };
+    vector<Svg::Point> points;
 
     const auto &first_stop = bus.Stops().front();
-    doc.Add(create_bus_no_text(bus_no, first_stop)
-                .SetFillColor(render_settings_.underlayer_color)
-                .SetStrokeColor(render_settings_.underlayer_color)
-                .SetStrokeWidth(render_settings_.underlayer_width)
-                .SetStrokeLineCap("round")
-                .SetStrokeLineJoin("round"));
-    doc.Add(create_bus_no_text(bus_no, first_stop).SetFillColor(stroke_color));
+    points.push_back(MapStop(first_stop));
 
-    const auto last_stop = bus.Stops()[bus.Stops().size() / 2];
+    const auto last_stop = bus.Stop(bus.Stops().size() / 2);
     if (!bus.IsRoundTrip() && first_stop != last_stop) {
-      doc.Add(create_bus_no_text(bus_no, last_stop)
-                  .SetFillColor(render_settings_.underlayer_color)
-                  .SetStrokeColor(render_settings_.underlayer_color)
-                  .SetStrokeWidth(render_settings_.underlayer_width)
-                  .SetStrokeLineCap("round")
-                  .SetStrokeLineJoin("round"));
-      doc.Add(create_bus_no_text(bus_no, last_stop).SetFillColor(stroke_color));
+      points.push_back(MapStop(last_stop));
     }
 
-    route_no_color_index =
-        (route_no_color_index + 1) % render_settings_.color_palette.size();
+    labels.emplace_back(bus_no, points);
+  }
+
+  BuildBusLabels(doc, labels);
+}
+
+void MapBuilder::BuildBusLabelsOnRoute(Svg::Document& doc, const RouteInfo::Route &route) const {
+  vector<pair<string, vector<Svg::Point>>> labels;
+
+  for (const auto& activity : route) {
+    if (holds_alternative<BusActivity>(activity)) {
+      auto bus_activity = get<BusActivity>(activity);
+      const auto& bus = buses_.at(bus_activity.bus);
+
+      vector<Svg::Point> points;
+
+      auto endpoints = bus.Endpoints();
+
+      const auto &first_stop = bus.Stop(bus_activity.start_stop_idx);
+      if ((first_stop == endpoints.first) || (endpoints.second && first_stop == endpoints.second)) {
+        points.push_back(MapStop(first_stop));
+      }
+
+      const auto &last_stop = bus.Stop(bus_activity.start_stop_idx + bus_activity.span_count);
+      if ((endpoints.second && last_stop == endpoints.second) || (last_stop == endpoints.first)) {
+        points.push_back(MapStop(last_stop));
+      }
+
+      labels.emplace_back(bus.Number(), points);
+    }
+  }
+
+  BuildBusLabels(doc, labels);
+}
+
+void MapBuilder::BuildStopPoints(Svg::Document &doc, const std::vector<std::string> &stop_names) const {
+  for (const auto &stop_name : stop_names) {
+    doc.Add(Circle{}
+              .SetCenter(MapStop(stop_name))
+              .SetRadius(render_settings_.stop_radius)
+              .SetFillColor("white")
+    );
   }
 }
 
 void MapBuilder::BuildStopPoints(Svg::Document &doc) const {
+  vector<string> stop_names;
   for (const auto &[stop_name, stop_id] : stop_idx_) {
-    doc.Add(Circle{}
-                .SetCenter(MapStop(stop_name))
-                .SetRadius(render_settings_.stop_radius)
-                .SetFillColor("white"));
+    stop_names.push_back(stop_name);
   }
+  BuildStopPoints(doc, stop_names);
 }
 
-void MapBuilder::BuildStopLabels(Svg::Document &doc) const {
-  for (const auto &[stop_name, stop_id] : stop_idx_) {
+void MapBuilder::BuildStopPointsOnRoute(Svg::Document& doc, const RouteInfo::Route &route) const {
+  vector<string> stop_names;
+
+  for (const auto& activity : route) {
+    if (holds_alternative<BusActivity>(activity)) {
+      auto bus_activity = get<BusActivity>(activity);
+      const auto& bus = buses_.at(bus_activity.bus);
+
+      if (bus_activity.span_count > 0) {
+        copy_n(
+          begin(bus.Stops()) + bus_activity.start_stop_idx,
+          bus_activity.span_count + 1,
+          back_inserter(stop_names)
+        );
+      }
+    }
+  }
+
+  BuildStopPoints(doc, stop_names);
+}
+
+void MapBuilder::BuildStopLabels(Svg::Document &doc, const std::vector<std::string> &stop_names) const {
+  for (const auto &stop_name : stop_names) {
     const auto common = Text{}
                             .SetPoint(MapStop(stop_name))
                             .SetOffset(render_settings_.stop_label_offset)
@@ -232,10 +357,45 @@ void MapBuilder::BuildStopLabels(Svg::Document &doc) const {
   }
 }
 
+void MapBuilder::BuildStopLabels(Svg::Document &doc) const {
+  vector<string> stop_names;
+  for (const auto &[stop_name, stop_id] : stop_idx_) {
+    stop_names.push_back(stop_name);
+  }
+  BuildStopLabels(doc, stop_names);
+}
+
+void MapBuilder::BuildStopLabelsOnRoute(Svg::Document& doc, const RouteInfo::Route &route) const {
+  vector<string> stop_names;
+
+  for (const auto& activity : route) {
+    if (holds_alternative<WaitActivity>(activity)) {
+      auto wait_activity = get<WaitActivity>(activity);
+      stop_names.push_back(wait_activity.stop_name);
+    }
+  }
+
+  if (route.size() > 1) {
+    auto bus_activity = get<BusActivity>(route.back());
+    auto last_stop = buses_.at(bus_activity.bus).Stop(bus_activity.start_stop_idx + bus_activity.span_count);
+    stop_names.push_back(last_stop);
+  }
+
+  BuildStopLabels(doc, stop_names);
+}
+
 const std::unordered_map<MapLayer, void (MapBuilder::*)(Svg::Document &) const>
     MapBuilder::build = {
         {MapLayer::BUS_LINES, &MapBuilder::BuildBusLines},
         {MapLayer::BUS_LABELS, &MapBuilder::BuildBusLabels},
         {MapLayer::STOP_POINTS, &MapBuilder::BuildStopPoints},
         {MapLayer::STOP_LABELS, &MapBuilder::BuildStopLabels},
+};
+
+const std::unordered_map<MapLayer, void (MapBuilder::*)(Svg::Document &, const RouteInfo::Route &route) const>
+    MapBuilder::build_route = {
+        {MapLayer::BUS_LINES, &MapBuilder::BuildBusLinesOnRoute},
+        {MapLayer::BUS_LABELS, &MapBuilder::BuildBusLabelsOnRoute},
+        {MapLayer::STOP_POINTS, &MapBuilder::BuildStopPointsOnRoute},
+        {MapLayer::STOP_LABELS, &MapBuilder::BuildStopLabelsOnRoute},
 };

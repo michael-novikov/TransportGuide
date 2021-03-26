@@ -134,7 +134,8 @@ void TransportManager::CreateRoutes() {
       double time_sum{0.0};
       unsigned int span_count{0};
       for (size_t j = i + 1; j < bus_stops.size(); ++j) {
-        time_sum += distances_[stop_idx_[bus_stops[j - 1]]][stop_idx_[bus_stops[j]]] / (routing_settings_.bus_velocity * 1000 / 60);
+        time_sum += distances_[stop_idx_[bus_stops[j - 1]]][stop_idx_[bus_stops[j]]]
+          / (routing_settings_.bus_velocity * 1000 / 60);
         road_graph->AddEdge(Graph::Edge<double>{
             .from = 2 * stop_idx_[bus_stops[i]] + 1,
             .to = 2 * stop_idx_[bus_stops[j]],
@@ -145,6 +146,7 @@ void TransportManager::CreateRoutes() {
           .time = time_sum,
           .bus = bus_no,
           .span_count = ++span_count,
+          .start_stop_idx = i,
         });
       }
     }
@@ -176,6 +178,7 @@ RouteInfo TransportManager::GetRouteInfo(std::string from, std::string to, int r
     .request_id = request_id,
     .total_time = route_info.value().weight,
     .items = items,
+    .svg_map = MapBuilder{render_settings_, stops_, stop_idx_, buses_}.GetRouteMap(items),
   };
 }
 

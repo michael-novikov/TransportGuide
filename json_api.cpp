@@ -131,6 +131,7 @@ static RenderSettings ParseRenderSettings(const map<string, Node>& render_settin
 
   render_settings.underlayer_color = ParseColor(render_settings_node.at("underlayer_color"));
   render_settings.underlayer_width = render_settings_node.at("underlayer_width").AsDouble();
+  render_settings.outer_margin = render_settings_node.at("outer_margin").AsDouble();
 
   const auto color_palette_node = render_settings_node.at("color_palette").AsArray();
   std::transform(begin(color_palette_node), end(color_palette_node),
@@ -249,6 +250,7 @@ void PrintResults(std::ostream& output, const std::vector<StopInfo>& stop_info, 
       }
       route_dict["items"] = items;
       route_dict["total_time"] = route.total_time;
+      route_dict["map"] = Node(InsertEscapeCharacter(route.svg_map));
     }
     result.push_back(Node(route_dict));
   }

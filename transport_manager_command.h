@@ -46,6 +46,7 @@ struct RenderSettings {
   int bus_label_font_size;
   Svg::Point bus_label_offset;
   std::vector<MapLayer> layers;
+  double outer_margin;
 };
 
 struct NewStopCommand {
@@ -183,13 +184,17 @@ struct BusActivity {
   double time;
   std::string bus;
   unsigned int span_count;
+  size_t start_stop_idx;
 };
 
 struct RouteInfo {
+  using Route = std::vector<std::variant<WaitActivity, BusActivity>>;
+
   int request_id;
   double total_time;
-  std::vector<std::variant<WaitActivity, BusActivity>> items;
+  Route items;
   std::optional<std::string> error_message;
+  std::string svg_map;
 };
 
 struct MapDescription {

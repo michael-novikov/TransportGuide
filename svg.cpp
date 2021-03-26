@@ -29,6 +29,34 @@ void RenderColor(std::ostream& out, const Color& color) {
   std::visit([&out](const auto& c) { RenderColor(out, c); }, color);
 }
 
+Rectangle& Rectangle::SetBasePoint(Point p) {
+  base_point_ = p;
+  return *this;
+}
+
+Rectangle& Rectangle::SetWidth(double w) {
+  w_ = w;
+  return *this;
+}
+
+Rectangle& Rectangle::SetHeight(double h) {
+  h_ = h;
+  return *this;
+}
+
+void Rectangle::Render(std::ostream& out) const {
+  out << "<rect";
+
+  out << " " << "x" << "=" << "\"" << base_point_.x << "\"";
+  out << " " << "y" << "=" << "\"" << base_point_.y << "\"";
+  out << " " << "width" << "=" << "\"" << w_ << "\"";
+  out << " " << "height" << "=" << "\"" << h_ << "\"";
+
+  out << " ";
+  ShapeProperties::RenderProperties(out);
+  out << " />";
+}
+
 Circle& Circle::SetCenter(Point center) {
   center_ = center;
   return *this;
