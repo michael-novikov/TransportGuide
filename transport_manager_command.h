@@ -49,6 +49,10 @@ struct RenderSettings {
   double outer_margin;
 };
 
+struct SerializationSettings {
+  std::string file;
+ };
+
 struct NewStopCommand {
 public:
   NewStopCommand(std::string name, double latitude, double longitude, std::unordered_map<std::string, unsigned int> distances)
@@ -154,8 +158,9 @@ using OutCommand = std::variant<StopDescriptionCommand, BusDescriptionCommand, R
 struct TransportManagerCommands {
   std::vector<InCommand> input_commands;
   std::vector<OutCommand> output_commands;
-  RoutingSettings routing_settings;
-  std::optional<RenderSettings> render_settings;
+  RoutingSettings routing_settings = {}; // TODO: remove default initialization
+  RenderSettings render_settings = {}; // TODO: remove default initialization
+  SerializationSettings serialization_settings;
 };
 
 struct StopInfo {

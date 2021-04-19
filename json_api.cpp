@@ -152,21 +152,41 @@ static RenderSettings ParseRenderSettings(const map<string, Node>& render_settin
   return render_settings;
 }
 
+static SerializationSettings ParseSerializationSettings(const map<string, Node>& serialization_settings_node) {
+  return {
+    serialization_settings_node.at("file").AsString(),
+  };
+}
+
 TransportManagerCommands ReadCommands(istream& s) {
   auto root = Load(s).GetRoot().AsMap();
 
-  auto base_requests = ParseBaseRequests(root.at("base_requests").AsArray());
-  auto stat_requests = ParseStatRequests(root.at("stat_requests").AsArray());
-  auto routing_settings = ParseRoutingSettings(root.at("routing_settings").AsMap());
+  auto base_requests = ParseBaseRequests(
+      root.count("base_requests") ? root.at("base_requests").AsArray() : vector<Node>{}
+  );
+
+  auto stat_requests = ParseStatRequests(
+      root.count("stat_requests") ? root.at("stat_requests").AsArray() : vector<Node>{}
+  );
+
+  auto routing_settings = root.count("routing_settings")
+    ? ParseRoutingSettings(root.at("routing_settings").AsMap())
+    : RoutingSettings{};
+
   auto render_settings = root.count("render_settings")
-    ? optional<RenderSettings>{ParseRenderSettings(root.at("render_settings").AsMap())}
-    : nullopt;
+    ? ParseRenderSettings(root.at("render_settings").AsMap())
+    : RenderSettings{};
+
+  auto serialization_settings = ParseSerializationSettings(
+    root.count("serialization_settings") ? root.at("serialization_settings").AsMap() : map<string, Node>{}
+  );
 
   return TransportManagerCommands{
     base_requests,
     stat_requests,
     routing_settings,
     render_settings,
+    serialization_settings,
   };
 }
 

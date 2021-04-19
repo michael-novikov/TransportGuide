@@ -55,29 +55,45 @@ struct OutCommandHandler {
   }
 };
 
-int main() {
+int main(int argc, const char *argv[]) {
+  if (argc != 2) {
+    cerr << "Usage: transport_guide [make_base|process_requests]\n";
+    return 5;
+  }
+
   auto& input = cin;
   auto& output = cout;
+
+  const string_view mode(argv[1]);
 
   TransportManagerCommands commands = JsonArgs::ReadCommands(input);
 
   TransportManager manager{
     commands.routing_settings,
-    commands.render_settings.value_or(RenderSettings{}),
+    commands.render_settings,
+    commands.serialization_settings,
   };
 
-  InCommandHandler in_handler{manager};
-  for (const auto& command : commands.input_commands) {
-    visit(in_handler, command);
+  if (mode == "make_base") {
+    InCommandHandler in_handler{manager};
+    for (const auto& command : commands.input_commands) {
+      visit(in_handler, command);
+    }
+    manager.CreateRoutes();
+    manager.FillBase();
+    manager.Serialize();
   }
+  else if (mode == "process_requests") {
+    manager.Deserialize();
+    OutCommandHandler out_handler{manager};
+    for (const auto& command : commands.output_commands) {
+      visit(out_handler, command);
+    }
 
-  manager.CreateRoutes();
-  OutCommandHandler out_handler{manager};
-
-  for (const auto& command : commands.output_commands) {
-    visit(out_handler, command);
+    JsonArgs::PrintResults(output, out_handler.stop_info_data, out_handler.bus_info_data, out_handler.route_data, out_handler.map_data);
+    output << endl;
   }
-
-  JsonArgs::PrintResults(output, out_handler.stop_info_data, out_handler.bus_info_data, out_handler.route_data, out_handler.map_data);
-  output << endl;
+  else {
+    throw std::invalid_argument("invalid argument: run mode");
+  }
 }

@@ -7,6 +7,8 @@
 #include "router.h"
 #include "map_builder.h"
 
+#include "transport_catalog.pb.h"
+
 #include <string_view>
 #include <variant>
 #include <vector>
@@ -19,9 +21,10 @@ class TransportManager {
 public:
   using RouteNumber = BusRoute::RouteNumber;
 
-  TransportManager(RoutingSettings routing_settings, RenderSettings render_settings)
+  TransportManager(RoutingSettings routing_settings, RenderSettings render_settings, SerializationSettings serialization_settings)
     : routing_settings_(std::move(routing_settings))
     , render_settings_(std::move(render_settings))
+    , serialization_settings_(std::move(serialization_settings))
   {
   }
 
@@ -36,16 +39,27 @@ public:
   RouteInfo GetRouteInfo(std::string from, std::string to, int request_id);
   MapDescription GetMap(int request_id) const;
 
+  void FillBase();
+  void Serialize() const;
+  void Deserialize();
+
 private:
-  std::map<std::string, size_t> stop_idx_;
+  RoutingSettings routing_settings_;
+  RenderSettings render_settings_;
+  SerializationSettings serialization_settings_;
+
   std::vector<Stop> stops_;
+  std::map<std::string, size_t> stop_idx_;
   std::unordered_map<size_t, std::unordered_map<size_t, unsigned int>> distances_;
   std::map<RouteNumber, BusRoute> buses_;
-  RoutingSettings routing_settings_;
+
+  TransportGuide::TransportCatalog base_;
+  std::unordered_map<std::string, const TransportGuide::Stop*> stop_info;
+  std::unordered_map<std::string, const TransportGuide::Bus*> bus_info;
+
   std::unique_ptr<Graph::DirectedWeightedGraph<double>> road_graph{nullptr};
   std::unique_ptr<Graph::Router<double>> router{nullptr};
   std::vector<std::variant<WaitActivity, BusActivity>> edge_description;
-  RenderSettings render_settings_;
 
   void InitStop(const std::string& name);
 };
