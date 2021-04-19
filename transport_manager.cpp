@@ -6,6 +6,8 @@
 #include "stop.h"
 #include "transport_manager_command.h"
 
+#include "transport_catalog.pb.h"
+
 #include <iterator>
 #include <sstream>
 #include <set>
@@ -14,6 +16,7 @@
 #include <algorithm>
 #include <iostream>
 #include <iomanip>
+#include <fstream>
 
 using namespace std;
 
@@ -72,6 +75,14 @@ std::pair<unsigned int, double> TransportManager::ComputeBusRouteLength(const Ro
 }
 
 StopInfo TransportManager::GetStopInfo(const string& stop_name, int request_id) {
+  if (stop_info.count(stop_name)) {
+    const auto& res = stop_info.at(stop_name)->buses();
+    return StopInfo{
+      .buses = vector<string>{begin(res), end(res)},
+      .request_id = request_id,
+    };
+  }
+
   if (!stop_idx_.count(stop_name)) {
     return StopInfo{
       .request_id = request_id,
@@ -93,6 +104,17 @@ StopInfo TransportManager::GetStopInfo(const string& stop_name, int request_id) 
 }
 
 BusInfo TransportManager::GetBusInfo(const RouteNumber& bus_no, int request_id) {
+  if (bus_info.count(bus_no)) {
+    const auto& bus = *bus_info.at(bus_no);
+    return BusInfo {
+      .route_length = static_cast<size_t>(bus.route_length()),
+      .request_id = request_id,
+      .curvature = bus.curvature(),
+      .stop_count = static_cast<size_t>(bus.stop_count()),
+      .unique_stop_count = static_cast<size_t>(bus.unique_stop_count()),
+    };
+  }
+
   if (!buses_.count(bus_no)) {
     return BusInfo{
       .request_id = request_id,
@@ -187,4 +209,44 @@ MapDescription TransportManager::GetMap(int request_id) const {
     .request_id = request_id,
     .svg_map = MapBuilder{render_settings_, stops_, stop_idx_, buses_}.GetMap(),
   };
+}
+
+void TransportManager::FillBase() {
+  for (const auto& stop : stops_) {
+    auto stop_ptr = base_.add_stops();
+    stop_ptr->set_name(stop.Name());
+    for (const auto& bus : GetStopInfo(stop.Name(), -1).buses) {
+      stop_ptr->add_buses(bus);
+    }
+  }
+
+  for (const auto& p : buses_) {
+    const auto bus_info = GetBusInfo(p.first, -1);
+    auto bus = base_.add_buses();
+    bus->set_name(p.first);
+    bus->set_route_length(bus_info.route_length);
+    bus->set_curvature(bus_info.curvature);
+    bus->set_stop_count(bus_info.stop_count);
+    bus->set_unique_stop_count(bus_info.unique_stop_count);
+  }
+}
+
+void TransportManager::Serialize() const {
+  ofstream out_file(serialization_settings_.file);
+  base_.SerializeToOstream(&out_file);
+}
+
+void TransportManager::Deserialize() {
+  ifstream in_file(serialization_settings_.file);
+
+  base_.Clear();
+  base_.ParseFromIstream(&in_file);
+
+  for (const auto& stop : base_.stops()) {
+    stop_info[stop.name()] = &stop;
+  }
+
+  for (const auto& bus : base_.buses()) {
+    bus_info[bus.name()] = &bus;
+  }
 }

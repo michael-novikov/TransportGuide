@@ -17,6 +17,19 @@ include_directories(${utility})
 
 project(${this_project} CXX)
 
+find_package(Protobuf REQUIRED)
+
+include_directories(${Protobuf_INCLUDE_DIRS})
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
+protobuf_generate_cpp(
+    PROTO_SRCS
+    PROTO_HDRS
+    bus.proto
+    stop.proto
+    transport_catalog.proto
+)
+
 set(headers
   bus.h
   stop.h
@@ -43,8 +56,9 @@ set(sources
   scanline_projection.cpp
   scanline_compressed_projection.cpp
   map_builder.cpp
-  ${this_project}.cpp
+  main.cpp
   )
 
-add_executable(${this_project} ${sources} ${headers})
+add_executable(${this_project} ${sources} ${headers} ${PROTO_SRCS} ${PROTO_HDRS})
+target_link_libraries(${this_project} ${Protobuf_LIBRARIES})
 

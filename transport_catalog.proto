@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package TransportGuide;
+
+import "stop.proto";
+import "bus.proto";
+
+message TransportCatalog {
+  repeated Stop stops = 1;
+  repeated Bus buses = 2;
+}
