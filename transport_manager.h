@@ -35,7 +35,8 @@ public:
   StopInfo GetStopInfo(const std::string& stop_name, int request_id);
   BusInfo GetBusInfo(const RouteNumber& route_number, int request_id);
 
-  void CreateRoutes();
+  void CreateGraph();
+  void CreateRouter();
   RouteInfo GetRouteInfo(std::string from, std::string to, int request_id);
   MapDescription GetMap(int request_id) const;
 
@@ -56,6 +57,9 @@ private:
   TransportGuide::TransportCatalog base_;
   std::unordered_map<std::string, const TransportGuide::Stop*> stop_info;
   std::unordered_map<std::string, const TransportGuide::Bus*> bus_info;
+
+  std::unordered_map<std::string, std::unordered_map<std::string, Graph::Router<double>::RouteInfo>> route_infos;
+  std::unordered_map<Graph::Router<double>::RouteId, Graph::Router<double>::ExpandedRoute> expanded_routes_cache;
 
   std::unique_ptr<Graph::DirectedWeightedGraph<double>> road_graph{nullptr};
   std::unique_ptr<Graph::Router<double>> router{nullptr};

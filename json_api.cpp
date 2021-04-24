@@ -190,17 +190,17 @@ TransportManagerCommands ReadCommands(istream& s) {
   };
 }
 
-static std::string InsertEscapeCharacter(std::string str) {
-  for (auto it = begin(str); it != end(str); ++it) {
-    if (*it == '"' || *it == '\\') {
-      it = str.insert(it, '\\');
-      if (it != end(str)) {
-        ++it;
-      }
-    }
-  }
-  return str;
-}
+//static std::string InsertEscapeCharacter(std::string str) {
+//  for (auto it = begin(str); it != end(str); ++it) {
+//    if (*it == '"' || *it == '\\') {
+//      it = str.insert(it, '\\');
+//      if (it != end(str)) {
+//        ++it;
+//      }
+//    }
+//  }
+//  return str;
+//}
 
 void PrintResults(std::ostream& output, const std::vector<StopInfo>& stop_info, const std::vector<BusInfo>& bus_info, const std::vector<RouteInfo>& route_data, const std::vector<MapDescription>& maps) {
   vector<Node> result;
@@ -270,7 +270,7 @@ void PrintResults(std::ostream& output, const std::vector<StopInfo>& stop_info, 
       }
       route_dict["items"] = items;
       route_dict["total_time"] = route.total_time;
-      route_dict["map"] = Node(InsertEscapeCharacter(route.svg_map));
+      // route_dict["map"] = Node(InsertEscapeCharacter(route.svg_map)); // TODO: uncomment this
     }
     result.push_back(Node(route_dict));
   }
@@ -278,7 +278,7 @@ void PrintResults(std::ostream& output, const std::vector<StopInfo>& stop_info, 
   for (const auto& map_description : maps) {
     map<string, Node> map_dict = {
       {"request_id", Node(map_description.request_id)},
-      {"map", Node(InsertEscapeCharacter(map_description.svg_map))},
+      //{"map", Node(InsertEscapeCharacter(map_description.svg_map))},
     };
     result.push_back(Node(map_dict));
   }

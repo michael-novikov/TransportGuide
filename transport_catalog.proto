@@ -4,8 +4,10 @@ package TransportGuide;
 
 import "stop.proto";
 import "bus.proto";
+import "router.proto";
 
 message TransportCatalog {
   repeated Stop stops = 1;
   repeated Bus buses = 2;
+  Router router = 3;
 }
