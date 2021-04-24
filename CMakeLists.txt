@@ -27,6 +27,7 @@ protobuf_generate_cpp(
     PROTO_HDRS
     bus.proto
     stop.proto
+    router.proto
     transport_catalog.proto
 )
 

@@ -204,5 +204,5 @@ struct RouteInfo {
 
 struct MapDescription {
   int request_id;
-  std::string svg_map;
+  //std::string svg_map;
 };

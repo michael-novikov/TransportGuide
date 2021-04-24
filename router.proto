@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package TransportGuide;
+
+message RoutingSettings {
+  uint32 bus_wait_time = 1;
+  double bus_velocity = 2;
+}
+
+message RouteInfo {
+  uint64 id = 1;
+  double weight = 2;
+  uint64 edge_count = 3;
+  repeated uint64 expanded_route = 4;
+  string vertex_from = 5;
+  string vertex_to = 6;
+};
+
+message WaitActivity {
+  string stop_name = 1;
+}
+
+message BusActivity {
+  double time = 1;
+  string bus = 2;
+  uint32 span_count = 3;
+  uint32 start_stop_idx = 4;
+}
+
+message Router {
+  RoutingSettings settings = 1;
+  repeated RouteInfo route_info = 2;
+  repeated WaitActivity wait_activity = 3;
+  repeated BusActivity bus_activity = 4;
+}

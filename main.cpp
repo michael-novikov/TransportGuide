@@ -79,7 +79,7 @@ int main(int argc, const char *argv[]) {
     for (const auto& command : commands.input_commands) {
       visit(in_handler, command);
     }
-    manager.CreateRoutes();
+    manager.CreateRouter();
     manager.FillBase();
     manager.Serialize();
   }
