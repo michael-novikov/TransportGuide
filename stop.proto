@@ -2,7 +2,13 @@ syntax = "proto3";
 
 package TransportGuide;
 
+message Point {
+  double longitude = 1;
+  double latitude = 2;
+}
+
 message Stop {
   repeated string buses = 1;
   string name = 2;
+  Point coordinates = 3;
 }

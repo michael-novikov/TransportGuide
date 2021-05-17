@@ -171,8 +171,8 @@ namespace Json {
     }
   }
 
-  void Print(const Document& doc, std::ostream& output) {
-    PrintNode(doc.GetRoot(), output);
+  std::ostream& operator<<(std::ostream& out, const Document& doc) {
+    PrintNode(doc.GetRoot(), out);
+    return out;
   }
-
 }

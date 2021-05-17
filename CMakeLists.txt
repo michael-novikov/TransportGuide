@@ -28,6 +28,7 @@ protobuf_generate_cpp(
     bus.proto
     stop.proto
     router.proto
+    #renderer.proto
     transport_catalog.proto
 )
 
@@ -41,8 +42,6 @@ set(headers
   graph.h
   router.h
   svg.h
-  projector_interface.h
-  scanline_projection.h
   scanline_compressed_projection.h
   map_builder.h
   )
@@ -54,7 +53,6 @@ set(sources
   json.cpp
   json_api.cpp
   svg.cpp
-  scanline_projection.cpp
   scanline_compressed_projection.cpp
   map_builder.cpp
   main.cpp

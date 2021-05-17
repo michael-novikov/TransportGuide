@@ -17,46 +17,43 @@
 #include <memory>
 #include <utility>
 
+namespace TransportGuide {
+
 class TransportManager {
 public:
-  using RouteNumber = BusRoute::RouteNumber;
+  TransportManager(RoutingSettings routing_settings,
+                   RenderSettings render_settings,
+                   SerializationSettings serialization_settings);
 
-  TransportManager(RoutingSettings routing_settings, RenderSettings render_settings, SerializationSettings serialization_settings)
-    : routing_settings_(std::move(routing_settings))
-    , render_settings_(std::move(render_settings))
-    , serialization_settings_(std::move(serialization_settings))
-  {
-  }
+  void AddStop(const std::string& name,
+               double latitude,
+               double longitude,
+               const std::unordered_map<std::string, unsigned int>& distances);
 
-  void AddStop(const std::string& name, double latitude, double longitude, const std::unordered_map<std::string, unsigned int>& distances);
-  void AddBus(const RouteNumber& route_number, const std::vector<std::string>& stop_names, bool cyclic);
+  void AddBus(const std::string& name,
+              const std::vector<std::string>& stops, bool is_roundtrip);
 
-  std::pair<unsigned int, double> ComputeBusRouteLength(const RouteNumber& route_number);
   StopInfo GetStopInfo(const std::string& stop_name, int request_id);
-  BusInfo GetBusInfo(const RouteNumber& route_number, int request_id);
+  BusInfo GetBusInfo(const std::string& route_number, int request_id);
 
   void CreateGraph();
   void CreateRouter();
-  RouteInfo GetRouteInfo(std::string from, std::string to, int request_id);
+  RouteDescription GetRouteInfo(std::string from, std::string to, int request_id);
   MapDescription GetMap(int request_id) const;
 
   void FillBase();
   void Serialize() const;
   void Deserialize();
 
-private:
-  RoutingSettings routing_settings_;
+  TransportCatalog base_;
   RenderSettings render_settings_;
   SerializationSettings serialization_settings_;
 
-  std::vector<Stop> stops_;
-  std::map<std::string, size_t> stop_idx_;
-  std::unordered_map<size_t, std::unordered_map<size_t, unsigned int>> distances_;
-  std::map<RouteNumber, BusRoute> buses_;
+private:
+  std::unordered_map<std::string, std::unordered_map<std::string, unsigned int>> distances_;
 
-  TransportGuide::TransportCatalog base_;
-  std::unordered_map<std::string, const TransportGuide::Stop*> stop_info;
-  std::unordered_map<std::string, const TransportGuide::Bus*> bus_info;
+  StopDict stop_dict_;
+  BusDict bus_dict_;
 
   std::unordered_map<std::string, std::unordered_map<std::string, Graph::Router<double>::RouteInfo>> route_infos;
   std::unordered_map<Graph::Router<double>::RouteId, Graph::Router<double>::ExpandedRoute> expanded_routes_cache;
@@ -65,6 +62,15 @@ private:
   std::unique_ptr<Graph::Router<double>> router{nullptr};
   std::vector<std::variant<WaitActivity, BusActivity>> edge_description;
 
+  struct StopVertexIds {
+    Graph::VertexId in;
+    Graph::VertexId out;
+  };
+  std::unordered_map<std::string, StopVertexIds> stop_vertex_ids_;
+
   void InitStop(const std::string& name);
+
+  void ComputeBusRouteLength(const std::string& bus_name);
 };
 
+}

@@ -1,7 +1,6 @@
 #pragma once
 
-#include "projector_interface.h"
-#include "scanline_projection.h"
+#include "transport_manager.h"
 
 #include "stop.h"
 #include "bus.h"
@@ -12,15 +11,26 @@
 #include <optional>
 #include <map>
 
-class  ScanlineCompressedProjector : public Projector {
-public:
-  ScanlineCompressedProjector(
-      std::vector<Coordinates> points,
-      const std::map<std::string, size_t>& stop_idx,
-      const std::map<BusRoute::RouteNumber, BusRoute>& buses,
-      double max_width, double max_height, double padding);
+struct LonComparator {
+  bool operator()(const TransportGuide::Point& lhs, const TransportGuide::Point& rhs) const {
+    return lhs.longitude() < rhs.longitude();
+  };
+};
 
-  virtual Svg::Point project(Coordinates point) const override;
+struct LatComparator {
+  bool operator()(const TransportGuide::Point& lhs, const TransportGuide::Point& rhs) const {
+    return lhs.latitude() < rhs.latitude();
+  };
+};
+
+class ScanlineCompressedProjector {
+public:
+  ScanlineCompressedProjector(const TransportGuide::StopDict& stop_dict,
+                              const TransportGuide::BusDict& buses,
+                              double max_width, double max_height, double padding);
+
+  Svg::Point project(const TransportGuide::Point& point) const;
+  Svg::Point operator()(const TransportGuide::Point& point) const { return project(point); };
 
 private:
   double x_step_{0};
@@ -29,7 +39,7 @@ private:
   const double height_{0};
   const double padding_;
 
-  std::map<Coordinates, size_t, LonComparator> sorted_by_lon_;
-  std::map<Coordinates, size_t, LatComparator> sorted_by_lat_;
+  std::map<TransportGuide::Point, size_t, LonComparator> sorted_by_lon_;
+  std::map<TransportGuide::Point, size_t, LatComparator> sorted_by_lat_;
 };
 

@@ -15,58 +15,23 @@
 #include <variant>
 
 using namespace std;
+using namespace TransportGuide;
+using namespace TransportGuide::JsonArgs;
 
-struct InCommandHandler {
-  InCommandHandler(TransportManager& manager) : manager_(manager) {}
-
-  TransportManager& manager_;
-
-  void operator()(const NewStopCommand &new_stop_command) {
-    manager_.AddStop(new_stop_command.Name(), new_stop_command.Latitude(),
-                     new_stop_command.Longitude(),
-                     new_stop_command.Distances());
-  }
-  void operator()(const NewBusCommand &new_bus_command ) {
-    manager_.AddBus(new_bus_command.Name(), new_bus_command.Stops(),
-                    new_bus_command.IsCyclic());
-  }
-};
-
-struct OutCommandHandler {
-  OutCommandHandler(TransportManager& manager) : manager_(manager) {}
-
-  vector<StopInfo> stop_info_data;
-  vector<BusInfo> bus_info_data;
-  vector<RouteInfo> route_data;
-  vector<MapDescription> map_data;
-  TransportManager& manager_;
-
-  void operator()(const StopDescriptionCommand &c) {
-    stop_info_data.push_back(manager_.GetStopInfo(c.Name(), c.RequestId()));
-  }
-  void operator()(const BusDescriptionCommand &c) {
-    bus_info_data.push_back(manager_.GetBusInfo(c.Name(), c.RequestId()));
-  }
-  void operator()(const RouteCommand &c) {
-    route_data.push_back(manager_.GetRouteInfo(c.From(), c.To(), c.RequestId()));
-  }
-  void operator()(const MapCommand &c) {
-    map_data.push_back(manager_.GetMap(c.RequestId()));
-  }
-};
+void usage() {
+  cerr << "Usage: transport_guide [make_base|process_requests]" << endl;
+}
 
 int main(int argc, const char *argv[]) {
   if (argc != 2) {
-    cerr << "Usage: transport_guide [make_base|process_requests]\n";
+    usage();
     return 5;
   }
 
   auto& input = cin;
   auto& output = cout;
 
-  const string_view mode(argv[1]);
-
-  TransportManagerCommands commands = JsonArgs::ReadCommands(input);
+  TransportManagerCommands commands = ReadCommands(input);
 
   TransportManager manager{
     commands.routing_settings,
@@ -74,6 +39,7 @@ int main(int argc, const char *argv[]) {
     commands.serialization_settings,
   };
 
+  const string_view mode(argv[1]);
   if (mode == "make_base") {
     InCommandHandler in_handler{manager};
     for (const auto& command : commands.input_commands) {
@@ -89,11 +55,11 @@ int main(int argc, const char *argv[]) {
     for (const auto& command : commands.output_commands) {
       visit(out_handler, command);
     }
-
-    JsonArgs::PrintResults(output, out_handler.stop_info_data, out_handler.bus_info_data, out_handler.route_data, out_handler.map_data);
-    output << endl;
+    out_handler.PrintResults(output);
   }
   else {
-    throw std::invalid_argument("invalid argument: run mode");
+    cerr << "invalid argument: run mode" << endl;
+    usage();
+    return 5;
   }
 }

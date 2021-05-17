@@ -5,7 +5,9 @@ package TransportGuide;
 message Bus {
   uint32 route_length = 1;
   double curvature = 2;
-  uint32 stop_count = 3;
+  //uint32 stop_count = 3;
   uint32 unique_stop_count = 4;
   string name = 5;
+  repeated string stops = 7;
+  bool is_roundtrip = 8;
 }

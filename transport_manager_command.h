@@ -2,6 +2,10 @@
 
 #include "svg.h"
 
+#include "stop.pb.h"
+#include "bus.pb.h"
+#include "router.pb.h"
+
 #include <algorithm>
 #include <limits>
 #include <string>
@@ -13,10 +17,12 @@
 #include <variant>
 #include <map>
 
-struct RoutingSettings {
-  unsigned int bus_wait_time;
-  double bus_velocity;
-};
+namespace TransportGuide {
+
+template <typename T>
+using Dict = std::unordered_map<std::string, T*>;
+using StopDict = Dict<Stop>;
+using BusDict = Dict<Bus>;
 
 enum class MapLayer {
   BUS_LINES,
@@ -158,7 +164,7 @@ using OutCommand = std::variant<StopDescriptionCommand, BusDescriptionCommand, R
 struct TransportManagerCommands {
   std::vector<InCommand> input_commands;
   std::vector<OutCommand> output_commands;
-  RoutingSettings routing_settings = {}; // TODO: remove default initialization
+  TransportGuide::RoutingSettings routing_settings;
   RenderSettings render_settings = {}; // TODO: remove default initialization
   SerializationSettings serialization_settings;
 };
@@ -178,31 +184,27 @@ struct BusInfo {
   std::optional<std::string> error_message;
 };
 
-struct WaitActivity {
-  std::string type;
-  unsigned int time;
-  std::string stop_name;
-};
-
-struct BusActivity {
-  std::string type;
-  double time;
-  std::string bus;
-  unsigned int span_count;
-  size_t start_stop_idx;
-};
-
-struct RouteInfo {
-  using Route = std::vector<std::variant<WaitActivity, BusActivity>>;
+struct RouteDescription {
+  using Route = std::vector<std::variant<TransportGuide::WaitActivity, TransportGuide::BusActivity>>;
 
   int request_id;
   double total_time;
   Route items;
   std::optional<std::string> error_message;
-  std::string svg_map;
+  // std::string svg_map;
 };
 
 struct MapDescription {
   int request_id;
-  //std::string svg_map;
+  // std::string svg_map;
 };
+
+using Result = std::variant<
+  StopInfo,
+  BusInfo,
+  RouteDescription,
+  MapDescription
+>;
+
+}
+

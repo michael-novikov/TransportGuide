@@ -1,6 +1,7 @@
 #include "json_api.h"
 
 #include "json.h"
+#include "router.pb.h"
 #include "svg.h"
 #include "transport_manager.h"
 #include "transport_manager_command.h"
@@ -15,6 +16,7 @@
 using namespace std;
 using namespace Json;
 
+namespace TransportGuide {
 namespace JsonArgs {
 
 InCommand ReadInputCommand(const Node& node) {
@@ -84,11 +86,15 @@ static vector<OutCommand> ParseStatRequests(const vector<Node>& stat_request_nod
   return stat_requests;
 }
 
-static RoutingSettings ParseRoutingSettings(const map<string, Node>& routing_settings_node) {
-  return {
-    static_cast<unsigned int>(routing_settings_node.at("bus_wait_time").AsInt()),
-    routing_settings_node.at("bus_velocity").AsDouble(),
-  };
+static TransportGuide::RoutingSettings ParseRoutingSettings(const map<string, Node> &routing_settings_node) {
+  TransportGuide::RoutingSettings settings;
+  settings.set_bus_velocity(
+    routing_settings_node.at("bus_velocity").AsDouble()
+  );
+  settings.set_bus_wait_time(
+    static_cast<uint32_t>(routing_settings_node.at("bus_wait_time").AsInt())
+  );
+  return settings;
 }
 
 static Svg::Color ParseColor(const Node& node) {
@@ -171,7 +177,7 @@ TransportManagerCommands ReadCommands(istream& s) {
 
   auto routing_settings = root.count("routing_settings")
     ? ParseRoutingSettings(root.at("routing_settings").AsMap())
-    : RoutingSettings{};
+    : TransportGuide::RoutingSettings{};
 
   auto render_settings = root.count("render_settings")
     ? ParseRenderSettings(root.at("render_settings").AsMap())
@@ -202,91 +208,141 @@ TransportManagerCommands ReadCommands(istream& s) {
 //  return str;
 //}
 
-void PrintResults(std::ostream& output, const std::vector<StopInfo>& stop_info, const std::vector<BusInfo>& bus_info, const std::vector<RouteInfo>& route_data, const std::vector<MapDescription>& maps) {
-  vector<Node> result;
+InCommandHandler::InCommandHandler(TransportGuide::TransportManager& manager)
+  : manager_(manager)
+{
+}
 
-  for (const auto& bus : bus_info) {
-    map<string, Node> bus_dict = {
-      {"request_id", Node(bus.request_id)},
-    };
+void InCommandHandler::operator()(const NewStopCommand &new_stop_command) {
+  manager_.AddStop(new_stop_command.Name(), new_stop_command.Latitude(),
+                   new_stop_command.Longitude(),
+                   new_stop_command.Distances());
+}
 
-    if (bus.error_message.has_value()) {
-      bus_dict["error_message"] = Node(bus.error_message.value());
-    }
-    else {
-      bus_dict["route_length"] = Node(static_cast<int>(bus.route_length));
-      bus_dict["curvature"] = Node(bus.curvature);
-      bus_dict["stop_count"] = Node(static_cast<int>(bus.stop_count));
-      bus_dict["unique_stop_count"] = Node(static_cast<int>(bus.unique_stop_count));
-    }
-    result.push_back(Node(bus_dict));
+void InCommandHandler::operator()(const NewBusCommand &new_bus_command ) {
+  manager_.AddBus(new_bus_command.Name(), new_bus_command.Stops(),
+                  new_bus_command.IsCyclic());
+}
+
+OutCommandHandler::OutCommandHandler(TransportGuide::TransportManager& manager)
+  : manager_(manager)
+{
+}
+
+void OutCommandHandler::operator()(const StopDescriptionCommand &c) {
+  results.push_back(manager_.GetStopInfo(c.Name(), c.RequestId()));
+}
+
+void OutCommandHandler::operator()(const BusDescriptionCommand &c) {
+  results.push_back(manager_.GetBusInfo(c.Name(), c.RequestId()));
+}
+
+void OutCommandHandler::operator()(const RouteCommand &c) {
+  results.push_back(manager_.GetRouteInfo(c.From(), c.To(), c.RequestId()));
+}
+
+void OutCommandHandler::operator()(const MapCommand &c) {
+  results.push_back(manager_.GetMap(c.RequestId()));
+}
+
+void OutCommandHandler::PrintResults(std::ostream& output) const {
+  JsonArgs::ResultPrinter printer(manager_);
+  vector<Json::Node> result_node;
+
+  result_node.reserve(results.size());
+  transform(begin(results), end(results),
+            back_inserter(result_node),
+            [&printer](const Result& res) { return visit(printer, res); });
+
+  Json::Document doc{Json::Node{move(result_node)}};
+  output << doc << std::endl;
+}
+
+ResultPrinter::ResultPrinter(const TransportGuide::TransportManager& manager)
+  : manager_(manager)
+{
+}
+
+Json::Node ResultPrinter::operator()(const StopInfo& stop) {
+  map<string, Node> stop_dict = {
+    {"request_id", Node(stop.request_id)},
+  };
+
+  if (stop.error_message.has_value()) {
+    stop_dict["error_message"] = Node(stop.error_message.value());
+  }
+  else {
+    vector<Node> buses;
+    buses.reserve(stop.buses.size());
+    transform(begin(stop.buses), end(stop.buses),
+              back_inserter(buses),
+              [](const string& route_number) { return Node(route_number); });
+    stop_dict["buses"] = Node(move(buses));
   }
 
-  for (const auto& stop : stop_info) {
-    map<string, Node> stop_dict = {
-      {"request_id", Node(stop.request_id)},
-    };
+  return Node(move(stop_dict));
+}
 
-    if (stop.error_message.has_value()) {
-      stop_dict["error_message"] = Node(stop.error_message.value());
-    }
-    else {
-      vector<Node> buses;
-      transform(begin(stop.buses), end(stop.buses),
-                back_inserter(buses),
-                [](const string& route_number) { return Node(route_number); });
+Json::Node ResultPrinter::operator()(const BusInfo& bus) {
+  map<string, Node> bus_dict = {
+    {"request_id", Node(bus.request_id)},
+  };
 
-      stop_dict["buses"] = Node(buses);
-    }
-    result.push_back(Node(move(stop_dict)));
+  if (bus.error_message) {
+    bus_dict["error_message"] = Node(bus.error_message.value());
+  }
+  else {
+    bus_dict["route_length"] = Node(static_cast<int>(bus.route_length));
+    bus_dict["curvature"] = Node(bus.curvature);
+    bus_dict["stop_count"] = Node(static_cast<int>(bus.stop_count));
+    bus_dict["unique_stop_count"] = Node(static_cast<int>(bus.unique_stop_count));
   }
 
-  for (const auto& route : route_data) {
-    map<string, Node> route_dict = {
-      {"request_id", Node(route.request_id)},
-    };
+  return Node(move(bus_dict));
+}
 
-    if (route.error_message.has_value()) {
-      route_dict["error_message"] = Node(route.error_message.value());
-    }
-    else {
-      vector<Node> items;
-      for (const auto& item : route.items) {
-        map<string, Node> activity_node;
-        if (holds_alternative<WaitActivity>(item)) {
-          auto wait_activity = get<WaitActivity>(item);
-          activity_node["type"] = wait_activity.type;
-          activity_node["time"] = static_cast<int>(wait_activity.time);
-          activity_node["stop_name"] = wait_activity.stop_name;
-        }
-        else {
-          auto bus_activity = get<BusActivity>(item);
-          activity_node["type"] = bus_activity.type;
-          activity_node["time"] = static_cast<double>(bus_activity.time);
-          activity_node["bus"] = bus_activity.bus;
-          activity_node["span_count"] = static_cast<int>(bus_activity.span_count);
-        }
-        items.push_back(activity_node);
+Json::Node ResultPrinter::operator()(const RouteDescription& route) {
+  map<string, Node> route_dict = {
+    {"request_id", Node(route.request_id)},
+  };
+
+  if (route.error_message) {
+    route_dict["error_message"] = Node(route.error_message.value());
+  }
+  else {
+    vector<Node> items;
+    items.reserve(route.items.size());
+    for (const auto& item : route.items) {
+      map<string, Node> activity_node;
+      if (holds_alternative<TransportGuide::WaitActivity>(item)) {
+        auto wait_activity = get<TransportGuide::WaitActivity>(item);
+        activity_node["type"] = string("Wait");
+        activity_node["time"] = static_cast<int>(manager_.base_.router().settings().bus_wait_time());
+        activity_node["stop_name"] = wait_activity.stop_name();
       }
-      route_dict["items"] = items;
-      route_dict["total_time"] = route.total_time;
-      // route_dict["map"] = Node(InsertEscapeCharacter(route.svg_map)); // TODO: uncomment this
+      else {
+        auto bus_activity = get<TransportGuide::BusActivity>(item);
+        activity_node["type"] = string("Bus");
+        activity_node["time"] = static_cast<double>(bus_activity.time());
+        activity_node["bus"] = bus_activity.bus();
+        activity_node["span_count"] = static_cast<int>(bus_activity.span_count());
+      }
+      items.push_back(activity_node);
     }
-    result.push_back(Node(route_dict));
+    route_dict["items"] = move(items);
+    route_dict["total_time"] = route.total_time;
+    //route_dict["map"] = Node(InsertEscapeCharacter(route.svg_map));
   }
 
-  for (const auto& map_description : maps) {
-    map<string, Node> map_dict = {
-      {"request_id", Node(map_description.request_id)},
-      //{"map", Node(InsertEscapeCharacter(map_description.svg_map))},
-    };
-    result.push_back(Node(map_dict));
-  }
+  return Node(move(route_dict));
+}
 
-  Node root{result};
-  Document doc{root};
-
-  Print(doc, output);
+Json::Node ResultPrinter::operator()(const MapDescription& map_description) {
+  return Node(map<string, Node> {
+    {"request_id", Node(map_description.request_id)},
+    //{"map", Node(InsertEscapeCharacter(map_description.svg_map))},
+  });
 }
 
 } // namespace JsonArgs
+} // namespace TransportGuide

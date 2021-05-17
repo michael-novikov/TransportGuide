@@ -4,9 +4,7 @@
 #include "svg.h"
 #include "transport_manager_command.h"
 
-#include "projector_interface.h"
 #include "scanline_compressed_projection.h"
-#include "scanline_projection.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -18,57 +16,60 @@
 using namespace std;
 using namespace Svg;
 
-static vector<Coordinates> RecomputeBasedOnReferencePoint(
-    std::vector<Stop> stops,
-    const std::map<BusRoute::RouteNumber, BusRoute> &buses) {
-  std::map<std::string, Coordinates *> stop_ptr;
-  for (auto &stop : stops) {
-    stop_ptr[stop.Name()] = &stop.StopCoordinates();
-  }
+namespace TransportGuide {
 
-  set<Coordinates> reference_points;
+static vector<Point> RecomputeBasedOnReferencePoint(const StopDict& stop_dict, const BusDict& bus_dict) {
+  set<Point> reference_points;
 
   // 1. endpoints
-  for (const auto &[bus_name, bus] : buses) {
-    {
-      auto endpoints = bus.Endpoints();
-      reference_points.insert(*stop_ptr.at(endpoints.first));
-      if (endpoints.second) {
-        reference_points.insert(*stop_ptr.at(endpoints.second.value()));
-      }
+  for (const auto &[bus_name, bus] : bus_dict) {
+    auto endpoints = Endpoints(*bus);
+    reference_points.insert(stop_dict.at(endpoints.first)->coordinates());
+    if (endpoints.second) {
+      reference_points.insert(stop_dict.at(endpoints.second.value())->coordinates());
     }
   }
 
   // 2. stops crossed more than twice by any bus
-  for (const auto &stop : stops) {
-    for (const auto &[bus_name, bus] : buses) {
-      int count_stop = count_if(
-          begin(bus.Stops()), end(bus.Stops()),
-          [&stop](const auto &bus_stop) { return bus_stop == stop.Name(); });
+  for (const auto& [stop_name, stop] : stop_dict) {
+    for (const auto &[bus_name, bus] : bus_dict) {
+      auto count_stop = count_if(
+        begin(bus->stops()), end(bus->stops()),
+        [name = stop_name](const auto &bus_stop) { return bus_stop == name; }
+      );
       if (count_stop > 2) {
-        reference_points.insert(stop.StopCoordinates());
+        reference_points.insert(stop->coordinates());
       }
     }
   }
 
   // 3. stops crossed by more than one bus
-  for (const auto &stop : stops) {
-    int count_stop = count_if(begin(buses), end(buses), [&stop](const auto &p) {
-      return p.second.ContainsStop(stop.Name());
-    });
-    if (count_stop > 1) {
-      reference_points.insert(stop.StopCoordinates());
+  for (const auto& [stop_name, stop] : stop_dict) {
+    //int count_stop = count_if(begin(bus_dict), end(bus_dict), [name = stop_name](const auto &p) {
+    //  return p.second.ContainsStop(name);
+    //});
+    //if (count_stop > 1) {
+    if (stop->buses_size() > 1) {
+      reference_points.insert(stop->coordinates());
     }
   }
 
-  for (const auto &[bus_name, bus] : buses) {
+  vector<Point> points;
+  unordered_map<string, Point*> point_dict;
+  points.reserve(stop_dict.size());
+  for (const auto& [stop_name, stop] : stop_dict) {
+    points.emplace_back(stop->coordinates());
+    point_dict[stop_name] = &points.back();
+  }
+
+  for (const auto &[bus_name, bus] : bus_dict) {
     size_t i{0};
-    auto stop_count = bus.Stops().size();
+    auto stop_count = bus->stops_size();
     while (i < stop_count) {
       size_t j{i + 1};
 
       for (; j < stop_count; ++j) {
-        if (reference_points.count(*stop_ptr.at(bus.Stop(j)))) {
+        if (reference_points.count(stop_dict.at(bus->stops(j))->coordinates())) {
           break;
         }
       }
@@ -77,57 +78,50 @@ static vector<Coordinates> RecomputeBasedOnReferencePoint(
         break;
       }
 
-      const auto &stop_i = *stop_ptr.at(bus.Stop(i));
-      const auto &stop_j = *stop_ptr.at(bus.Stop(j));
+      const auto &stop_i = *point_dict.at(bus->stops(i));
+      const auto &stop_j = *point_dict.at(bus->stops(j));
 
-      double lon_step = (stop_j.longitude - stop_i.longitude) / (j - i);
-      double lat_step = (stop_j.latitude - stop_i.latitude) / (j - i);
+      double lon_step = static_cast<double>(stop_j.longitude() - stop_i.longitude()) / (j - i);
+      double lat_step = static_cast<double>(stop_j.latitude() - stop_i.latitude()) / (j - i);
 
       for (size_t k = i + 1; k < j; ++k) {
-        auto &stop_k = *stop_ptr.at(bus.Stop(k));
-        stop_k.longitude = stop_i.longitude + lon_step * (k - i);
-        stop_k.latitude = stop_i.latitude + lat_step * (k - i);
+        auto stop_k = point_dict.at(bus->stops(k));
+        stop_k->set_longitude(stop_i.longitude() + lon_step * (k - i));
+        stop_k->set_latitude(stop_i.latitude() + lat_step * (k - i));
       }
 
       i = j;
     }
   }
 
-  vector<Coordinates> points;
-  transform(begin(stops), end(stops), back_inserter(points),
-            [](const Stop &stop) { return stop.StopCoordinates(); });
   return points;
 }
 
 static map<string, Svg::Point>
 ComputeStopsCoords(RenderSettings render_settings,
-                   const std::vector<Stop> &stops,
-                   const std::map<std::string, size_t> &stop_idx,
-                   const std::map<BusRoute::RouteNumber, BusRoute> &buses) {
-  const auto points = RecomputeBasedOnReferencePoint(stops, buses);
+                   const StopDict& stop_dict,
+                   const BusDict& buses) {
+  const auto points = RecomputeBasedOnReferencePoint(stop_dict, buses);
   const double max_width = render_settings.width;
   const double max_height = render_settings.height;
   const double padding = render_settings.padding;
 
-  const unique_ptr<Projector> projector =
-      make_unique<ScanlineCompressedProjector>(points, stop_idx, buses,
-                                               max_width, max_height, padding);
+  ScanlineCompressedProjector projector(stop_dict, buses, max_width, max_height, padding);
 
   map<string, Svg::Point> stops_coords;
-  for (size_t i = 0; i < stops.size(); ++i) {
-    stops_coords[stops[i].Name()] = projector->project(points[i]);
+  for (const auto& [name, stop] : stop_dict) {
+    stops_coords[name] = projector.project(stop->coordinates());
   }
   return stops_coords;
 }
 
 MapBuilder::MapBuilder(RenderSettings render_settings,
-                       const std::vector<Stop> &stops,
-                       const std::map<std::string, size_t> &stop_idx,
-                       const std::map<BusRoute::RouteNumber, BusRoute> &buses)
+                       const StopDict& stop_dict,
+                       const BusDict& buses)
     : render_settings_(move(render_settings))
-    , stop_idx_(stop_idx)
+    , stop_dict_(stop_dict)
     , buses_(buses)
-    , stop_coordinates_(ComputeStopsCoords(render_settings_, stops, stop_idx_, buses))
+    , stop_coordinates_(ComputeStopsCoords(render_settings_, stop_dict, buses))
 {
   int color_idx{0};
   for (const auto &[bus_no, bus] : buses_) {
@@ -135,7 +129,7 @@ MapBuilder::MapBuilder(RenderSettings render_settings,
     color_idx = (color_idx + 1) % render_settings_.color_palette.size();
   }
 
-  doc_ = BuildMap();
+  map_ = BuildMap();
 }
 
 Svg::Document MapBuilder::BuildMap() const {
@@ -158,7 +152,7 @@ void MapBuilder::BuildTranslucentRoute(Svg::Document &doc) const {
   );
 }
 
-Svg::Document MapBuilder::BuildRoute(const RouteInfo::Route &route) const {
+Svg::Document MapBuilder::BuildRoute(const RouteDescription::Route &route) const {
   auto res = BuildMap();
   BuildTranslucentRoute(res);
 
@@ -192,26 +186,26 @@ void MapBuilder::BuildBusLines(Svg::Document &doc,
 void MapBuilder::BuildBusLines(Svg::Document &doc) const {
   vector<pair<string, vector<string>>> full_routes;
   for (const auto &[bus_no, bus] : buses_) {
-    full_routes.emplace_back(bus_no, bus.Stops());
+    full_routes.emplace_back(bus_no, vector(begin(bus->stops()), end(bus->stops())));
   }
   BuildBusLines(doc, full_routes);
 }
 
-void MapBuilder::BuildBusLinesOnRoute(Svg::Document &doc, const RouteInfo::Route &route) const {
+void MapBuilder::BuildBusLinesOnRoute(Svg::Document &doc, const RouteDescription::Route &route) const {
   vector<pair<string, vector<string>>> routes;
 
   for (const auto& activity : route) {
     if (holds_alternative<BusActivity>(activity)) {
       auto bus_activity = get<BusActivity>(activity);
-      const auto& bus = buses_.at(bus_activity.bus);
+      const auto& bus = buses_.at(bus_activity.bus());
 
       vector<string> bus_stops;
       copy_n(
-        next(begin(bus.Stops()), bus_activity.start_stop_idx),
-        bus_activity.span_count + 1,
+        next(begin(bus->stops()), bus_activity.start_stop_idx()),
+        bus_activity.span_count() + 1,
         back_inserter(bus_stops)
       );
-      routes.emplace_back(bus.Number(), bus_stops);
+      routes.emplace_back(bus->name(), bus_stops);
     }
   }
 
@@ -255,11 +249,11 @@ void MapBuilder::BuildBusLabels(Svg::Document &doc) const {
   for (const auto &[bus_no, bus] : buses_) {
     vector<Svg::Point> points;
 
-    const auto &first_stop = bus.Stops().front();
+    const auto &first_stop = bus->stops(0);
     points.push_back(MapStop(first_stop));
 
-    const auto last_stop = bus.Stop(bus.Stops().size() / 2);
-    if (!bus.IsRoundTrip() && first_stop != last_stop) {
+    const auto last_stop = bus->stops(bus->stops_size() / 2);
+    if (!bus->is_roundtrip() && first_stop != last_stop) {
       points.push_back(MapStop(last_stop));
     }
 
@@ -269,29 +263,29 @@ void MapBuilder::BuildBusLabels(Svg::Document &doc) const {
   BuildBusLabels(doc, labels);
 }
 
-void MapBuilder::BuildBusLabelsOnRoute(Svg::Document& doc, const RouteInfo::Route &route) const {
+void MapBuilder::BuildBusLabelsOnRoute(Svg::Document& doc, const RouteDescription::Route &route) const {
   vector<pair<string, vector<Svg::Point>>> labels;
 
   for (const auto& activity : route) {
     if (holds_alternative<BusActivity>(activity)) {
       auto bus_activity = get<BusActivity>(activity);
-      const auto& bus = buses_.at(bus_activity.bus);
+      const auto& bus = buses_.at(bus_activity.bus());
 
       vector<Svg::Point> points;
 
-      auto endpoints = bus.Endpoints();
+      auto endpoints = Endpoints(*bus);
 
-      const auto &first_stop = bus.Stop(bus_activity.start_stop_idx);
+      const auto &first_stop = bus->stops(bus_activity.start_stop_idx());
       if ((first_stop == endpoints.first) || (endpoints.second && first_stop == endpoints.second)) {
         points.push_back(MapStop(first_stop));
       }
 
-      const auto &last_stop = bus.Stop(bus_activity.start_stop_idx + bus_activity.span_count);
+      const auto &last_stop = bus->stops(bus_activity.start_stop_idx() + bus_activity.span_count());
       if ((endpoints.second && last_stop == endpoints.second) || (last_stop == endpoints.first)) {
         points.push_back(MapStop(last_stop));
       }
 
-      labels.emplace_back(bus.Number(), points);
+      labels.emplace_back(bus->name(), points);
     }
   }
 
@@ -310,24 +304,24 @@ void MapBuilder::BuildStopPoints(Svg::Document &doc, const std::vector<std::stri
 
 void MapBuilder::BuildStopPoints(Svg::Document &doc) const {
   vector<string> stop_names;
-  for (const auto &[stop_name, stop_id] : stop_idx_) {
+  for (const auto &[stop_name, stop] : stop_dict_) {
     stop_names.push_back(stop_name);
   }
   BuildStopPoints(doc, stop_names);
 }
 
-void MapBuilder::BuildStopPointsOnRoute(Svg::Document& doc, const RouteInfo::Route &route) const {
+void MapBuilder::BuildStopPointsOnRoute(Svg::Document& doc, const RouteDescription::Route &route) const {
   vector<string> stop_names;
 
   for (const auto& activity : route) {
     if (holds_alternative<BusActivity>(activity)) {
       auto bus_activity = get<BusActivity>(activity);
-      const auto& bus = buses_.at(bus_activity.bus);
+      const auto& bus = buses_.at(bus_activity.bus());
 
-      if (bus_activity.span_count > 0) {
+      if (bus_activity.span_count() > 0) {
         copy_n(
-          begin(bus.Stops()) + bus_activity.start_stop_idx,
-          bus_activity.span_count + 1,
+          begin(bus->stops()) + bus_activity.start_stop_idx(),
+          bus_activity.span_count() + 1,
           back_inserter(stop_names)
         );
       }
@@ -359,25 +353,25 @@ void MapBuilder::BuildStopLabels(Svg::Document &doc, const std::vector<std::stri
 
 void MapBuilder::BuildStopLabels(Svg::Document &doc) const {
   vector<string> stop_names;
-  for (const auto &[stop_name, stop_id] : stop_idx_) {
+  for (const auto &[stop_name, stop] : stop_dict_) {
     stop_names.push_back(stop_name);
   }
   BuildStopLabels(doc, stop_names);
 }
 
-void MapBuilder::BuildStopLabelsOnRoute(Svg::Document& doc, const RouteInfo::Route &route) const {
+void MapBuilder::BuildStopLabelsOnRoute(Svg::Document& doc, const RouteDescription::Route &route) const {
   vector<string> stop_names;
 
   for (const auto& activity : route) {
     if (holds_alternative<WaitActivity>(activity)) {
       auto wait_activity = get<WaitActivity>(activity);
-      stop_names.push_back(wait_activity.stop_name);
+      stop_names.push_back(wait_activity.stop_name());
     }
   }
 
   if (route.size() > 1) {
     auto bus_activity = get<BusActivity>(route.back());
-    auto last_stop = buses_.at(bus_activity.bus).Stop(bus_activity.start_stop_idx + bus_activity.span_count);
+    auto last_stop = buses_.at(bus_activity.bus())->stops(bus_activity.start_stop_idx() + bus_activity.span_count());
     stop_names.push_back(last_stop);
   }
 
@@ -392,10 +386,12 @@ const std::unordered_map<MapLayer, void (MapBuilder::*)(Svg::Document &) const>
         {MapLayer::STOP_LABELS, &MapBuilder::BuildStopLabels},
 };
 
-const std::unordered_map<MapLayer, void (MapBuilder::*)(Svg::Document &, const RouteInfo::Route &route) const>
+const std::unordered_map<MapLayer, void (MapBuilder::*)(Svg::Document &, const RouteDescription::Route &route) const>
     MapBuilder::build_route = {
         {MapLayer::BUS_LINES, &MapBuilder::BuildBusLinesOnRoute},
         {MapLayer::BUS_LABELS, &MapBuilder::BuildBusLabelsOnRoute},
         {MapLayer::STOP_POINTS, &MapBuilder::BuildStopPointsOnRoute},
         {MapLayer::STOP_LABELS, &MapBuilder::BuildStopLabelsOnRoute},
 };
+
+}
