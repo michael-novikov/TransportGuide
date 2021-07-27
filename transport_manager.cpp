@@ -30,10 +30,10 @@ namespace TransportGuide {
 TransportManager::TransportManager(RoutingSettings routing_settings,
                                    RenderSettings render_settings,
                                    SerializationSettings serialization_settings)
-  : render_settings_(std::move(render_settings))
-  , serialization_settings_(std::move(serialization_settings))
+  : serialization_settings_(std::move(serialization_settings))
 {
   base_.mutable_router()->mutable_settings()->CopyFrom(routing_settings);
+  base_.mutable_router()->mutable_render_settings()->CopyFrom(render_settings);
 }
 
 void TransportManager::InitStop(const string& name) {
@@ -212,14 +212,14 @@ RouteDescription TransportManager::GetRouteInfo(std::string from, std::string to
     .request_id = request_id,
     .total_time = route_info.weight,
     .items = items,
-    // .svg_map = MapBuilder{render_settings_, stop_dict_, bus_dict_}.GetRouteMap(items),
+    .svg_map = map_builder->GetRouteMap(items),
   };
 }
 
 MapDescription TransportManager::GetMap(int request_id) const {
   return {
     .request_id = request_id,
-    // .svg_map = MapBuilder{render_settings_, stop_dict_, bus_dict_}.GetMap(),
+    .svg_map = map_builder->GetMap(),
   };
 }
 
@@ -241,10 +241,15 @@ void TransportManager::FillBase() {
     ComputeBusRouteLength(bus.name());
   }
 
+  auto map_points = MapBuilder::ComputeStopsCoords(base_.router().render_settings(), stop_dict_, bus_dict_);
+
   auto router_serialized = base_.mutable_router();
   for (const auto& activity : edge_description) {
     if (holds_alternative<WaitActivity>(activity)) {
-      router_serialized->add_wait_activity()->CopyFrom(get<WaitActivity>(activity));
+      auto wait_activity = router_serialized->add_wait_activity();
+      wait_activity->CopyFrom(get<WaitActivity>(activity));
+      wait_activity->mutable_map_point()->set_x(map_points[wait_activity->stop_name()].x());
+      wait_activity->mutable_map_point()->set_y(map_points[wait_activity->stop_name()].y());
     } else if (holds_alternative<BusActivity>(activity)) {
       router_serialized->add_bus_activity()->CopyFrom(get<BusActivity>(activity));
     } else {
@@ -273,6 +278,9 @@ void TransportManager::FillBase() {
 
     }
   }
+
+  map_builder = make_unique<MapBuilder>(base_.router().render_settings(), stop_dict_, bus_dict_);
+  //router_serialized->set_base_map(map_builder->GetMapBody());
 }
 
 void TransportManager::Serialize() const {
@@ -311,13 +319,23 @@ void TransportManager::Deserialize() {
     base_.router().wait_activity_size() + base_.router().bus_activity_size()
   );
 
+  std::map<std::string, SvgPoint> stop_points_for_map;
   for (const auto& w : base_.router().wait_activity()) {
     edge_description.push_back(w);
+    stop_points_for_map[w.stop_name()].CopyFrom(w.map_point());
   }
 
   for (const auto& b : base_.router().bus_activity()) {
     edge_description.push_back(b);
   }
+
+  map_builder = make_unique<MapBuilder>(
+      base_.router().render_settings(),
+      stop_dict_,
+      bus_dict_,
+      stop_points_for_map,
+      base_.router().base_map()
+  );
 }
 
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "router.pb.h"
+
 #include <cstdint>
 #include <variant>
 #include <string>
@@ -8,33 +10,11 @@
 #include <memory>
 #include <optional>
 
+namespace TransportGuide {
 namespace Svg {
 
-struct Point {
-  double x{0};
-  double y{0};
-};
+const Color NoneColor;
 
-struct Rgb {
-  std::uint8_t red;
-  std::uint8_t green;
-  std::uint8_t blue;
-};
-
-struct Rgba {
-  std::uint8_t red;
-  std::uint8_t green;
-  std::uint8_t blue;
-  double alpha;
-};
-
-using Color = std::variant<std::monostate, Rgb, Rgba, std::string>;
-const Color NoneColor{};
-
-void RenderColor(std::ostream& out, std::monostate);
-void RenderColor(std::ostream& out, const Rgb& rgb);
-void RenderColor(std::ostream& out, const Rgba& rgb);
-void RenderColor(std::ostream& out, const std::string& name);
 void RenderColor(std::ostream& out, const Color& color);
 
 class Shape {
@@ -58,8 +38,8 @@ public:
   void RenderProperties(std::ostream& out) const;
 
 private:
-  Color fill_{NoneColor};
-  Color stroke_{NoneColor};
+  Color fill_;
+  Color stroke_;
   double stroke_width_{1.0};
   std::optional<std::string> stroke_linecap_;
   std::optional<std::string> stroke_linejoin_;
@@ -123,40 +103,50 @@ void ShapeProperties<Owner>::RenderProperties(std::ostream& out) const {
 
 class Rectangle : public Shape, public ShapeProperties<Rectangle> {
 public:
-  Rectangle& SetBasePoint(Point p);
+  Rectangle() {
+    base_point_.set_x(0);
+    base_point_.set_y(0);
+  }
+
+  Rectangle& SetBasePoint(const SvgPoint& p);
   Rectangle& SetWidth(double w);
   Rectangle& SetHeight(double h);
 
   void Render(std::ostream& out) const;
 private:
-  Point base_point_{0.0, 0.0};
+  SvgPoint base_point_;
   double w_{1.0};
   double h_{1.0};
 };
 
 class Circle : public Shape, public ShapeProperties<Circle> {
 public:
-  Circle& SetCenter(Point center);
+  Circle() {
+    center_.set_x(0);
+    center_.set_y(0);
+  }
+
+  Circle& SetCenter(const SvgPoint& center);
   Circle& SetRadius(double r);
 
   void Render(std::ostream& out) const;
 private:
-  Point center_{0.0, 0.0};
+  SvgPoint center_;
   double r_{1.0};
 };
 
 class Polyline : public Shape, public ShapeProperties<Polyline> {
 public:
-  Polyline& AddPoint(Point point);
+  Polyline& AddPoint(const SvgPoint& point);
   void Render(std::ostream& out) const;
 private:
-  std::vector<Point> points_;
+  std::vector<SvgPoint> points_;
 };
 
 class Text : public Shape, public ShapeProperties<Text> {
 public:
-  Text& SetPoint(Point coordinates);
-  Text& SetOffset(Point offset);
+  Text& SetPoint(const SvgPoint& coordinates);
+  Text& SetOffset(const SvgPoint& offset);
   Text& SetFontSize(uint32_t font_size);
   Text& SetFontFamily(const std::string& font_family);
   Text& SetFontWeight(const std::string& font_weight);
@@ -164,8 +154,8 @@ public:
 
   void Render(std::ostream& out) const;
 private:
-  Point coordinates_;
-  Point offset_;
+  SvgPoint coordinates_;
+  SvgPoint offset_;
   uint32_t font_size_;
   std::optional<std::string> font_family_;
   std::optional<std::string> font_weight_;
@@ -181,6 +171,10 @@ public:
 
   void Render(std::ostream& out) const;
   std::string ToString() const;
+  static std::string WrapBodyInSvg(const std::string& body);
+  std::string BodyToString() const;
+  std::string ToStringBasedOn(const std::string& base) const;
+
 private:
   std::vector<std::unique_ptr<Shape>> shapes_;
 };
@@ -191,3 +185,4 @@ void Document::Add(ShapeType shape) {
 }
 
 } // namespace Svg
+} // namespace TransportGuide

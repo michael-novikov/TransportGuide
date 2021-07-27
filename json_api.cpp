@@ -97,62 +97,62 @@ static TransportGuide::RoutingSettings ParseRoutingSettings(const map<string, No
   return settings;
 }
 
-static Svg::Color ParseColor(const Node& node) {
+static Color ParseColor(const Node& node) {
+  Color color;
   if (node.IsArray()) {
     const auto color_array = node.AsArray();
     if (color_array.size() == 4) {
-      return Svg::Rgba{
-        static_cast<uint8_t>(color_array[0].AsInt()),
-        static_cast<uint8_t>(color_array[1].AsInt()),
-        static_cast<uint8_t>(color_array[2].AsInt()),
-        color_array[3].AsDouble(),
-      };
+      auto rgba = color.mutable_rgba();
+      rgba->set_red(static_cast<uint8_t>(color_array[0].AsInt()));
+      rgba->set_green(static_cast<uint8_t>(color_array[1].AsInt()));
+      rgba->set_blue(static_cast<uint8_t>(color_array[2].AsInt()));
+      rgba->set_alpha(color_array[3].AsDouble());
     }
     else {
-      return Svg::Rgb{
-        static_cast<uint8_t>(color_array[0].AsInt()),
-        static_cast<uint8_t>(color_array[1].AsInt()),
-        static_cast<uint8_t>(color_array[2].AsInt()),
-      };
+      auto rgb = color.mutable_rgb();
+      rgb->set_red(static_cast<uint8_t>(color_array[0].AsInt()));
+      rgb->set_green(static_cast<uint8_t>(color_array[1].AsInt()));
+      rgb->set_blue(static_cast<uint8_t>(color_array[2].AsInt()));
     }
   }
   else {
-    return node.AsString();
+    color.set_name(node.AsString());
   }
+  return color;
 }
 
 static RenderSettings ParseRenderSettings(const map<string, Node>& render_settings_node) {
   RenderSettings render_settings;
 
-  render_settings.width = render_settings_node.at("width").AsDouble();
-  render_settings.height = render_settings_node.at("height").AsDouble();
-  render_settings.padding = render_settings_node.at("padding").AsDouble();
-  render_settings.stop_radius = render_settings_node.at("stop_radius").AsDouble();
-  render_settings.line_width = render_settings_node.at("line_width").AsDouble();
-  render_settings.stop_label_font_size = render_settings_node.at("stop_label_font_size").AsInt();
+  render_settings.set_width(render_settings_node.at("width").AsDouble());
+  render_settings.set_height(render_settings_node.at("height").AsDouble());
+  render_settings.set_padding(render_settings_node.at("padding").AsDouble());
+  render_settings.set_stop_radius(render_settings_node.at("stop_radius").AsDouble());
+  render_settings.set_line_width(render_settings_node.at("line_width").AsDouble());
+  render_settings.set_stop_label_font_size(render_settings_node.at("stop_label_font_size").AsInt());
 
   const auto stop_label_offset_node = render_settings_node.at("stop_label_offset").AsArray();
-  render_settings.stop_label_offset = Svg::Point{stop_label_offset_node[0].AsDouble(),
-                                                 stop_label_offset_node[1].AsDouble() };
+  render_settings.mutable_stop_label_offset()->set_x(stop_label_offset_node[0].AsDouble());
+  render_settings.mutable_stop_label_offset()->set_y(stop_label_offset_node[1].AsDouble());
 
-  render_settings.underlayer_color = ParseColor(render_settings_node.at("underlayer_color"));
-  render_settings.underlayer_width = render_settings_node.at("underlayer_width").AsDouble();
-  render_settings.outer_margin = render_settings_node.at("outer_margin").AsDouble();
+  render_settings.mutable_underlayer_color()->CopyFrom(ParseColor(render_settings_node.at("underlayer_color")));
+  render_settings.set_underlayer_width(render_settings_node.at("underlayer_width").AsDouble());
+  render_settings.set_outer_margin(render_settings_node.at("outer_margin").AsDouble());
 
   const auto color_palette_node = render_settings_node.at("color_palette").AsArray();
-  std::transform(begin(color_palette_node), end(color_palette_node),
-                 back_inserter(render_settings.color_palette),
-                 ParseColor);
+  for (const auto& color_node : color_palette_node) {
+    render_settings.add_color_palette()->CopyFrom(ParseColor(color_node));
+  }
 
-  render_settings.bus_label_font_size = render_settings_node.at("bus_label_font_size").AsInt();
+  render_settings.set_bus_label_font_size(render_settings_node.at("bus_label_font_size").AsInt());
 
   const auto bus_label_offset_node = render_settings_node.at("bus_label_offset").AsArray();
-  render_settings.bus_label_offset = Svg::Point{bus_label_offset_node[0].AsDouble(),
-                                                bus_label_offset_node[1].AsDouble() };
+  render_settings.mutable_bus_label_offset()->set_x(bus_label_offset_node[0].AsDouble());
+  render_settings.mutable_bus_label_offset()->set_y(bus_label_offset_node[1].AsDouble());
 
   const auto layers_node = render_settings_node.at("layers").AsArray();
   for (const auto& layer_item : layers_node) {
-    render_settings.layers.push_back(MAP_LAYERS.at(layer_item.AsString()));
+    render_settings.add_layers(layer_item.AsString());
   }
 
   return render_settings;
@@ -196,17 +196,17 @@ TransportManagerCommands ReadCommands(istream& s) {
   };
 }
 
-//static std::string InsertEscapeCharacter(std::string str) {
-//  for (auto it = begin(str); it != end(str); ++it) {
-//    if (*it == '"' || *it == '\\') {
-//      it = str.insert(it, '\\');
-//      if (it != end(str)) {
-//        ++it;
-//      }
-//    }
-//  }
-//  return str;
-//}
+static std::string InsertEscapeCharacter(std::string str) {
+  for (auto it = begin(str); it != end(str); ++it) {
+    if (*it == '"' || *it == '\\') {
+      it = str.insert(it, '\\');
+      if (it != end(str)) {
+        ++it;
+      }
+    }
+  }
+  return str;
+}
 
 InCommandHandler::InCommandHandler(TransportGuide::TransportManager& manager)
   : manager_(manager)
@@ -331,7 +331,7 @@ Json::Node ResultPrinter::operator()(const RouteDescription& route) {
     }
     route_dict["items"] = move(items);
     route_dict["total_time"] = route.total_time;
-    //route_dict["map"] = Node(InsertEscapeCharacter(route.svg_map));
+    route_dict["map"] = Node(InsertEscapeCharacter(route.svg_map));
   }
 
   return Node(move(route_dict));
@@ -340,7 +340,7 @@ Json::Node ResultPrinter::operator()(const RouteDescription& route) {
 Json::Node ResultPrinter::operator()(const MapDescription& map_description) {
   return Node(map<string, Node> {
     {"request_id", Node(map_description.request_id)},
-    //{"map", Node(InsertEscapeCharacter(map_description.svg_map))},
+    {"map", Node(InsertEscapeCharacter(map_description.svg_map))},
   });
 }
 

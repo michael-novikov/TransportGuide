@@ -25,12 +25,12 @@ struct LatComparator {
 
 class ScanlineCompressedProjector {
 public:
-  ScanlineCompressedProjector(const TransportGuide::StopDict& stop_dict,
+  ScanlineCompressedProjector(const std::unordered_map<std::string, TransportGuide::Point>& stop_dict,
                               const TransportGuide::BusDict& buses,
                               double max_width, double max_height, double padding);
 
-  Svg::Point project(const TransportGuide::Point& point) const;
-  Svg::Point operator()(const TransportGuide::Point& point) const { return project(point); };
+  TransportGuide::SvgPoint project(const TransportGuide::Point& point) const;
+  TransportGuide::SvgPoint operator()(const TransportGuide::Point& point) const { return project(point); };
 
 private:
   double x_step_{0};

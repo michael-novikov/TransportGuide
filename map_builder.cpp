@@ -1,5 +1,6 @@
 #include "map_builder.h"
 
+#include "router.pb.h"
 #include "stop.h"
 #include "svg.h"
 #include "transport_manager_command.h"
@@ -13,12 +14,12 @@
 #include <set>
 #include <utility>
 
+namespace TransportGuide {
+
 using namespace std;
 using namespace Svg;
 
-namespace TransportGuide {
-
-static vector<Point> RecomputeBasedOnReferencePoint(const StopDict& stop_dict, const BusDict& bus_dict) {
+static unordered_map<string, Point> RecomputeBasedOnReferencePoint(const StopDict& stop_dict, const BusDict& bus_dict) {
   set<Point> reference_points;
 
   // 1. endpoints
@@ -45,21 +46,14 @@ static vector<Point> RecomputeBasedOnReferencePoint(const StopDict& stop_dict, c
 
   // 3. stops crossed by more than one bus
   for (const auto& [stop_name, stop] : stop_dict) {
-    //int count_stop = count_if(begin(bus_dict), end(bus_dict), [name = stop_name](const auto &p) {
-    //  return p.second.ContainsStop(name);
-    //});
-    //if (count_stop > 1) {
     if (stop->buses_size() > 1) {
       reference_points.insert(stop->coordinates());
     }
   }
 
-  vector<Point> points;
-  unordered_map<string, Point*> point_dict;
-  points.reserve(stop_dict.size());
+  unordered_map<string, Point> point_dict;
   for (const auto& [stop_name, stop] : stop_dict) {
-    points.emplace_back(stop->coordinates());
-    point_dict[stop_name] = &points.back();
+    point_dict[stop_name].CopyFrom(stop->coordinates());
   }
 
   for (const auto &[bus_name, bus] : bus_dict) {
@@ -69,7 +63,7 @@ static vector<Point> RecomputeBasedOnReferencePoint(const StopDict& stop_dict, c
       size_t j{i + 1};
 
       for (; j < stop_count; ++j) {
-        if (reference_points.count(stop_dict.at(bus->stops(j))->coordinates())) {
+        if (reference_points.count(point_dict.at(bus->stops(j)))) {
           break;
         }
       }
@@ -78,64 +72,88 @@ static vector<Point> RecomputeBasedOnReferencePoint(const StopDict& stop_dict, c
         break;
       }
 
-      const auto &stop_i = *point_dict.at(bus->stops(i));
-      const auto &stop_j = *point_dict.at(bus->stops(j));
+      const auto &stop_i = point_dict.at(bus->stops(i));
+      const auto &stop_j = point_dict.at(bus->stops(j));
 
       double lon_step = static_cast<double>(stop_j.longitude() - stop_i.longitude()) / (j - i);
       double lat_step = static_cast<double>(stop_j.latitude() - stop_i.latitude()) / (j - i);
 
       for (size_t k = i + 1; k < j; ++k) {
-        auto stop_k = point_dict.at(bus->stops(k));
-        stop_k->set_longitude(stop_i.longitude() + lon_step * (k - i));
-        stop_k->set_latitude(stop_i.latitude() + lat_step * (k - i));
+        auto& stop_k = point_dict.at(bus->stops(k));
+        stop_k.set_longitude(stop_i.longitude() + lon_step * (k - i));
+        stop_k.set_latitude(stop_i.latitude() + lat_step * (k - i));
       }
 
       i = j;
     }
   }
 
-  return points;
+  return point_dict;
 }
 
-static map<string, Svg::Point>
-ComputeStopsCoords(RenderSettings render_settings,
-                   const StopDict& stop_dict,
-                   const BusDict& buses) {
-  const auto points = RecomputeBasedOnReferencePoint(stop_dict, buses);
-  const double max_width = render_settings.width;
-  const double max_height = render_settings.height;
-  const double padding = render_settings.padding;
+std::map<std::string, SvgPoint> MapBuilder::ComputeStopsCoords(const RenderSettings& render_settings,
+                                                               const StopDict& stop_dict,
+                                                               const BusDict& buses) {
+  auto point_dict = RecomputeBasedOnReferencePoint(stop_dict, buses);
 
-  ScanlineCompressedProjector projector(stop_dict, buses, max_width, max_height, padding);
+  ScanlineCompressedProjector projector(
+    point_dict,
+    buses,
+    render_settings.width(),
+    render_settings.height(),
+    render_settings.padding()
+  );
 
-  map<string, Svg::Point> stops_coords;
-  for (const auto& [name, stop] : stop_dict) {
-    stops_coords[name] = projector.project(stop->coordinates());
+  map<string, SvgPoint> stops_coords;
+  for (const auto& [name, point] : point_dict) {
+    stops_coords[name].CopyFrom(projector.project(point));
   }
   return stops_coords;
 }
 
-MapBuilder::MapBuilder(RenderSettings render_settings,
+MapBuilder::MapBuilder(const RenderSettings& render_settings,
                        const StopDict& stop_dict,
-                       const BusDict& buses)
-    : render_settings_(move(render_settings))
+                       const BusDict& bus_dict,
+                       std::map<std::string, SvgPoint> coordinates_redefined,
+                       std::string map_string)
+    : render_settings_(render_settings)
     , stop_dict_(stop_dict)
-    , buses_(buses)
-    , stop_coordinates_(ComputeStopsCoords(render_settings_, stop_dict, buses))
+    , bus_dict_(bus_dict)
+    , stop_coordinates_(move(coordinates_redefined))
+    , map_base_(map_string)
 {
   int color_idx{0};
-  for (const auto &[bus_no, bus] : buses_) {
-    route_color[bus_no] = render_settings_.color_palette[color_idx];
-    color_idx = (color_idx + 1) % render_settings_.color_palette.size();
+  for (const auto &[bus_no, bus] : bus_dict_) {
+    route_color[bus_no] = render_settings_.color_palette(color_idx);
+    color_idx = (color_idx + 1) % render_settings_.color_palette_size();
   }
 
   map_ = BuildMap();
+  map_base_ = map_.BodyToString();
+}
+
+MapBuilder::MapBuilder(const RenderSettings& render_settings,
+                       const StopDict& stop_dict,
+                       const BusDict& bus_dict)
+    : render_settings_(render_settings)
+    , stop_dict_(stop_dict)
+    , bus_dict_(bus_dict)
+    , stop_coordinates_(ComputeStopsCoords(render_settings_, stop_dict_, bus_dict_))
+{
+  int color_idx{0};
+  for (const auto &[bus_no, bus] : bus_dict_) {
+    route_color[bus_no] = render_settings_.color_palette(color_idx);
+    color_idx = (color_idx + 1) % render_settings_.color_palette_size();
+  }
+
+  map_ = BuildMap();
+  map_base_ = map_.BodyToString();
 }
 
 Svg::Document MapBuilder::BuildMap() const {
   Svg::Document doc;
 
-  for (const auto &layer : render_settings_.layers) {
+  for (const auto &layer : render_settings_.layers()) {
     (this->*build.at(layer))(doc);
   }
 
@@ -143,27 +161,32 @@ Svg::Document MapBuilder::BuildMap() const {
 }
 
 void MapBuilder::BuildTranslucentRoute(Svg::Document &doc) const {
+  SvgPoint base_point;
+  base_point.set_x(-render_settings_.outer_margin());
+  base_point.set_y(-render_settings_.outer_margin());
+
   doc.Add(
     Rectangle{}
-      .SetBasePoint({-render_settings_.outer_margin, -render_settings_.outer_margin})
-      .SetWidth(render_settings_.width + 2 * render_settings_.outer_margin)
-      .SetHeight(render_settings_.height + 2 * render_settings_.outer_margin)
-      .SetFillColor(render_settings_.underlayer_color)
+      .SetBasePoint(base_point)
+      .SetWidth(render_settings_.width() + 2 * render_settings_.outer_margin())
+      .SetHeight(render_settings_.height() + 2 * render_settings_.outer_margin())
+      .SetFillColor(render_settings_.underlayer_color())
   );
 }
 
 Svg::Document MapBuilder::BuildRoute(const RouteDescription::Route &route) const {
-  auto res = BuildMap();
+  //auto res = BuildMap();
+  Svg::Document res;
   BuildTranslucentRoute(res);
 
-  for (const auto &layer : render_settings_.layers) {
+  for (const auto &layer : render_settings_.layers()) {
     (this->*build_route.at(layer))(res, route);
   }
 
   return res;
 }
 
-Svg::Point MapBuilder::MapStop(const std::string &stop_name) const {
+SvgPoint MapBuilder::MapStop(const std::string &stop_name) const {
   return stop_coordinates_.at(stop_name);
 }
 
@@ -172,7 +195,7 @@ void MapBuilder::BuildBusLines(Svg::Document &doc,
   for (const auto &line : lines) {
     auto route_line = Polyline{}
                           .SetStrokeColor(route_color.at(line.first))
-                          .SetStrokeWidth(render_settings_.line_width)
+                          .SetStrokeWidth(render_settings_.line_width())
                           .SetStrokeLineCap("round")
                           .SetStrokeLineJoin("round");
 
@@ -185,7 +208,7 @@ void MapBuilder::BuildBusLines(Svg::Document &doc,
 
 void MapBuilder::BuildBusLines(Svg::Document &doc) const {
   vector<pair<string, vector<string>>> full_routes;
-  for (const auto &[bus_no, bus] : buses_) {
+  for (const auto &[bus_no, bus] : bus_dict_) {
     full_routes.emplace_back(bus_no, vector(begin(bus->stops()), end(bus->stops())));
   }
   BuildBusLines(doc, full_routes);
@@ -197,7 +220,7 @@ void MapBuilder::BuildBusLinesOnRoute(Svg::Document &doc, const RouteDescription
   for (const auto& activity : route) {
     if (holds_alternative<BusActivity>(activity)) {
       auto bus_activity = get<BusActivity>(activity);
-      const auto& bus = buses_.at(bus_activity.bus());
+      const auto& bus = bus_dict_.at(bus_activity.bus());
 
       vector<string> bus_stops;
       copy_n(
@@ -213,25 +236,25 @@ void MapBuilder::BuildBusLinesOnRoute(Svg::Document &doc, const RouteDescription
 }
 
 void MapBuilder::BuildBusLabels(Svg::Document &doc,
-                                const std::vector<std::pair<std::string, std::vector<Svg::Point>>> &labels) const {
+                                const std::vector<std::pair<std::string, std::vector<SvgPoint>>> &labels) const {
   auto create_bus_no_text = [&](string bus_no,
-                                const Svg::Point &point) -> Text {
+                                const SvgPoint &point) -> Text {
     return Text{}
              .SetPoint(point)
-             .SetOffset(render_settings_.bus_label_offset)
-             .SetFontSize(render_settings_.bus_label_font_size)
+             .SetOffset(render_settings_.bus_label_offset())
+             .SetFontSize(render_settings_.bus_label_font_size())
              .SetFontFamily("Verdana")
              .SetFontWeight("bold")
              .SetData(bus_no);
   };
 
   auto add_bus_label = [&](const string &label,
-                           const Svg::Point &point,
+                           const SvgPoint &point,
                            const Color &stroke_color) {
     doc.Add(create_bus_no_text(label, point)
-              .SetFillColor(render_settings_.underlayer_color)
-              .SetStrokeColor(render_settings_.underlayer_color)
-              .SetStrokeWidth(render_settings_.underlayer_width)
+              .SetFillColor(render_settings_.underlayer_color())
+              .SetStrokeColor(render_settings_.underlayer_color())
+              .SetStrokeWidth(render_settings_.underlayer_width())
               .SetStrokeLineCap("round")
               .SetStrokeLineJoin("round"));
     doc.Add(create_bus_no_text(label, point).SetFillColor(stroke_color));
@@ -245,9 +268,9 @@ void MapBuilder::BuildBusLabels(Svg::Document &doc,
 }
 
 void MapBuilder::BuildBusLabels(Svg::Document &doc) const {
-  vector<pair<string, vector<Svg::Point>>> labels;
-  for (const auto &[bus_no, bus] : buses_) {
-    vector<Svg::Point> points;
+  vector<pair<string, vector<SvgPoint>>> labels;
+  for (const auto &[bus_no, bus] : bus_dict_) {
+    vector<SvgPoint> points;
 
     const auto &first_stop = bus->stops(0);
     points.push_back(MapStop(first_stop));
@@ -264,14 +287,14 @@ void MapBuilder::BuildBusLabels(Svg::Document &doc) const {
 }
 
 void MapBuilder::BuildBusLabelsOnRoute(Svg::Document& doc, const RouteDescription::Route &route) const {
-  vector<pair<string, vector<Svg::Point>>> labels;
+  vector<pair<string, vector<SvgPoint>>> labels;
 
   for (const auto& activity : route) {
     if (holds_alternative<BusActivity>(activity)) {
       auto bus_activity = get<BusActivity>(activity);
-      const auto& bus = buses_.at(bus_activity.bus());
+      const auto& bus = bus_dict_.at(bus_activity.bus());
 
-      vector<Svg::Point> points;
+      vector<SvgPoint> points;
 
       auto endpoints = Endpoints(*bus);
 
@@ -294,10 +317,13 @@ void MapBuilder::BuildBusLabelsOnRoute(Svg::Document& doc, const RouteDescriptio
 
 void MapBuilder::BuildStopPoints(Svg::Document &doc, const std::vector<std::string> &stop_names) const {
   for (const auto &stop_name : stop_names) {
+    Color fill_color;
+    fill_color.set_name("white");
+
     doc.Add(Circle{}
               .SetCenter(MapStop(stop_name))
-              .SetRadius(render_settings_.stop_radius)
-              .SetFillColor("white")
+              .SetRadius(render_settings_.stop_radius())
+              .SetFillColor(fill_color)
     );
   }
 }
@@ -316,7 +342,7 @@ void MapBuilder::BuildStopPointsOnRoute(Svg::Document& doc, const RouteDescripti
   for (const auto& activity : route) {
     if (holds_alternative<BusActivity>(activity)) {
       auto bus_activity = get<BusActivity>(activity);
-      const auto& bus = buses_.at(bus_activity.bus());
+      const auto& bus = bus_dict_.at(bus_activity.bus());
 
       if (bus_activity.span_count() > 0) {
         copy_n(
@@ -335,19 +361,21 @@ void MapBuilder::BuildStopLabels(Svg::Document &doc, const std::vector<std::stri
   for (const auto &stop_name : stop_names) {
     const auto common = Text{}
                             .SetPoint(MapStop(stop_name))
-                            .SetOffset(render_settings_.stop_label_offset)
-                            .SetFontSize(render_settings_.stop_label_font_size)
+                            .SetOffset(render_settings_.stop_label_offset())
+                            .SetFontSize(render_settings_.stop_label_font_size())
                             .SetFontFamily("Verdana")
                             .SetData(stop_name);
 
     doc.Add(Text{common}
-                .SetFillColor(render_settings_.underlayer_color)
-                .SetStrokeColor(render_settings_.underlayer_color)
-                .SetStrokeWidth(render_settings_.underlayer_width)
+                .SetFillColor(render_settings_.underlayer_color())
+                .SetStrokeColor(render_settings_.underlayer_color())
+                .SetStrokeWidth(render_settings_.underlayer_width())
                 .SetStrokeLineCap("round")
                 .SetStrokeLineJoin("round"));
 
-    doc.Add(Text{common}.SetFillColor("black"));
+    Color fill_color;
+    fill_color.set_name("black");
+    doc.Add(Text{common}.SetFillColor(fill_color));
   }
 }
 
@@ -371,27 +399,27 @@ void MapBuilder::BuildStopLabelsOnRoute(Svg::Document& doc, const RouteDescripti
 
   if (route.size() > 1) {
     auto bus_activity = get<BusActivity>(route.back());
-    auto last_stop = buses_.at(bus_activity.bus())->stops(bus_activity.start_stop_idx() + bus_activity.span_count());
+    auto last_stop = bus_dict_.at(bus_activity.bus())->stops(bus_activity.start_stop_idx() + bus_activity.span_count());
     stop_names.push_back(last_stop);
   }
 
   BuildStopLabels(doc, stop_names);
 }
 
-const std::unordered_map<MapLayer, void (MapBuilder::*)(Svg::Document &) const>
+const std::unordered_map<std::string, void (MapBuilder::*)(Svg::Document &) const>
     MapBuilder::build = {
-        {MapLayer::BUS_LINES, &MapBuilder::BuildBusLines},
-        {MapLayer::BUS_LABELS, &MapBuilder::BuildBusLabels},
-        {MapLayer::STOP_POINTS, &MapBuilder::BuildStopPoints},
-        {MapLayer::STOP_LABELS, &MapBuilder::BuildStopLabels},
+        {"bus_lines", &MapBuilder::BuildBusLines},
+        {"bus_labels", &MapBuilder::BuildBusLabels},
+        {"stop_points", &MapBuilder::BuildStopPoints},
+        {"stop_labels", &MapBuilder::BuildStopLabels},
 };
 
-const std::unordered_map<MapLayer, void (MapBuilder::*)(Svg::Document &, const RouteDescription::Route &route) const>
+const std::unordered_map<std::string, void (MapBuilder::*)(Svg::Document &, const RouteDescription::Route &route) const>
     MapBuilder::build_route = {
-        {MapLayer::BUS_LINES, &MapBuilder::BuildBusLinesOnRoute},
-        {MapLayer::BUS_LABELS, &MapBuilder::BuildBusLabelsOnRoute},
-        {MapLayer::STOP_POINTS, &MapBuilder::BuildStopPointsOnRoute},
-        {MapLayer::STOP_LABELS, &MapBuilder::BuildStopLabelsOnRoute},
+        {"bus_lines", &MapBuilder::BuildBusLinesOnRoute},
+        {"bus_labels",  &MapBuilder::BuildBusLabelsOnRoute},
+        {"stop_points", &MapBuilder::BuildStopPointsOnRoute},
+        {"stop_labels", &MapBuilder::BuildStopLabelsOnRoute},
 };
 
 }

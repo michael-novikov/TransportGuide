@@ -46,7 +46,6 @@ public:
   void Deserialize();
 
   TransportCatalog base_;
-  RenderSettings render_settings_;
   SerializationSettings serialization_settings_;
 
 private:
@@ -67,6 +66,8 @@ private:
     Graph::VertexId out;
   };
   std::unordered_map<std::string, StopVertexIds> stop_vertex_ids_;
+
+  std::unique_ptr<MapBuilder> map_builder;
 
   void InitStop(const std::string& name);
 

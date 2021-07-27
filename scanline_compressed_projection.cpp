@@ -1,4 +1,5 @@
 #include "scanline_compressed_projection.h"
+#include "router.pb.h"
 #include "stop.h"
 
 #include <map>
@@ -7,7 +8,7 @@
 using namespace std;
 using namespace TransportGuide;
 
-ScanlineCompressedProjector::ScanlineCompressedProjector(const TransportGuide::StopDict& stop_dict,
+ScanlineCompressedProjector::ScanlineCompressedProjector(const std::unordered_map<std::string, TransportGuide::Point>& stop_dict,
                                                          const TransportGuide::BusDict& buses,
                                                          double max_width, double max_height, double padding)
   : height_(max_height)
@@ -21,14 +22,14 @@ ScanlineCompressedProjector::ScanlineCompressedProjector(const TransportGuide::S
   for (const auto& [bus_name, bus] : buses) {
     const auto& bus_stops = bus->stops();
     for (int i = 1; i < bus_stops.size(); ++i) {
-      route_neighbours_[stop_dict.at(bus_stops[i-1])->coordinates()].insert(stop_dict.at(bus_stops[i])->coordinates());
-      route_neighbours_[stop_dict.at(bus_stops[i])->coordinates()].insert(stop_dict.at(bus_stops[i-1])->coordinates());
+      route_neighbours_[stop_dict.at(bus_stops[i-1])].insert(stop_dict.at(bus_stops[i]));
+      route_neighbours_[stop_dict.at(bus_stops[i])].insert(stop_dict.at(bus_stops[i-1]));
     }
   }
 
   {
     for (const auto& [name, stop] : stop_dict) {
-      sorted_by_lon_[stop->coordinates()] = 0;
+      sorted_by_lon_[stop] = 0;
     }
 
     size_t i{0};
@@ -50,7 +51,7 @@ ScanlineCompressedProjector::ScanlineCompressedProjector(const TransportGuide::S
 
   {
     for (const auto& [name, stop] : stop_dict) {
-      sorted_by_lat_[stop->coordinates()] = 0;
+      sorted_by_lat_[stop] = 0;
     }
 
     size_t i{0};
@@ -71,10 +72,10 @@ ScanlineCompressedProjector::ScanlineCompressedProjector(const TransportGuide::S
   }
 }
 
-Svg::Point ScanlineCompressedProjector::project(const TransportGuide::Point& point) const {
-    return {
-      sorted_by_lon_.at(point) * x_step_ + padding_,
-      height_ - padding_ - sorted_by_lat_.at(point) * y_step_,
-    };
+SvgPoint ScanlineCompressedProjector::project(const TransportGuide::Point& point) const {
+  SvgPoint res;
+  res.set_x(sorted_by_lon_.at(point) * x_step_ + padding_);
+  res.set_y(height_ - padding_ - sorted_by_lat_.at(point) * y_step_);
+  return res;
 }
 

@@ -8,6 +8,7 @@
 #include "bus.pb.h"
 #include "router.pb.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 #include <map>
@@ -17,24 +18,36 @@ namespace TransportGuide {
 
 class MapBuilder {
 public:
-  MapBuilder(RenderSettings render_settings,
+  MapBuilder(const RenderSettings& render_settings,
              const StopDict& stop_dict,
-             const BusDict& buses);
+             const BusDict& bus_dict,
+             std::map<std::string, SvgPoint> coordinates_redefined,
+             std::string map_string);
 
-  std::string GetMap() const { return map_.ToString(); }
-  std::string GetRouteMap(const RouteDescription::Route &route) const { return BuildRoute(route).ToString(); }
+  MapBuilder(const RenderSettings& render_settings,
+             const StopDict& stop_dict,
+             const BusDict& bus_dict);
+
+  std::string GetMapBody() const { return map_base_; }
+  std::string GetMap() const { return Svg::Document::WrapBodyInSvg(map_base_); }
+  std::string GetRouteMap(const RouteDescription::Route &route) const { return BuildRoute(route).ToStringBasedOn(map_base_); }
+
+  static std::map<std::string, SvgPoint> ComputeStopsCoords(const RenderSettings& render_settings,
+                                                            const StopDict& stop_dict,
+                                                            const BusDict& buses);
 
 private:
-  RenderSettings render_settings_;
-
+  const RenderSettings& render_settings_;
   const StopDict& stop_dict_;
-  const BusDict& buses_;
-  std::map<std::string, Svg::Point> stop_coordinates_;
-  std::map<std::string, Svg::Color> route_color;
+  const BusDict& bus_dict_;
+
+  std::map<std::string, SvgPoint> stop_coordinates_;
+  std::map<std::string, Color> route_color;
 
   Svg::Document map_;
+  std::string map_base_;
 
-  Svg::Point MapStop(const std::string& stop_name) const;
+  SvgPoint MapStop(const std::string& stop_name) const;
 
   Svg::Document BuildMap() const;
 
@@ -46,7 +59,7 @@ private:
   void BuildBusLinesOnRoute(Svg::Document& doc, const RouteDescription::Route &route) const;
 
   void BuildBusLabels(Svg::Document &doc,
-                      const std::vector<std::pair<std::string, std::vector<Svg::Point>>> &labels) const;
+                      const std::vector<std::pair<std::string, std::vector<SvgPoint>>> &labels) const;
   void BuildBusLabels(Svg::Document& doc) const;
   void BuildBusLabelsOnRoute(Svg::Document& doc, const RouteDescription::Route &route) const;
 
@@ -58,9 +71,12 @@ private:
   void BuildStopLabels(Svg::Document& doc) const;
   void BuildStopLabelsOnRoute(Svg::Document& doc, const RouteDescription::Route &route) const;
 
-  static const std::unordered_map<MapLayer, void (MapBuilder::*)(Svg::Document&) const> build;
   static const std::unordered_map<
-    MapLayer,
+    std::string,
+    void (MapBuilder::*)(Svg::Document&) const
+  > build;
+  static const std::unordered_map<
+    std::string,
     void (MapBuilder::*)(Svg::Document&, const RouteDescription::Route &route) const
   > build_route;
 };

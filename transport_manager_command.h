@@ -20,40 +20,9 @@
 namespace TransportGuide {
 
 template <typename T>
-using Dict = std::unordered_map<std::string, T*>;
+using Dict = std::map<std::string, T*>;
 using StopDict = Dict<Stop>;
 using BusDict = Dict<Bus>;
-
-enum class MapLayer {
-  BUS_LINES,
-  BUS_LABELS,
-  STOP_POINTS,
-  STOP_LABELS,
-};
-
-const std::map<std::string, MapLayer> MAP_LAYERS = {
-  { "bus_lines", MapLayer::BUS_LINES },
-  { "bus_labels", MapLayer::BUS_LABELS },
-  { "stop_points", MapLayer::STOP_POINTS },
-  { "stop_labels", MapLayer::STOP_LABELS },
-};
-
-struct RenderSettings {
-  double width;
-  double height;
-  double padding;
-  double stop_radius;
-  double line_width;
-  int stop_label_font_size;
-  Svg::Point stop_label_offset;
-  Svg::Color underlayer_color;
-  double underlayer_width;
-  std::vector<Svg::Color> color_palette;
-  int bus_label_font_size;
-  Svg::Point bus_label_offset;
-  std::vector<MapLayer> layers;
-  double outer_margin;
-};
 
 struct SerializationSettings {
   std::string file;
@@ -191,12 +160,12 @@ struct RouteDescription {
   double total_time;
   Route items;
   std::optional<std::string> error_message;
-  // std::string svg_map;
+  std::string svg_map;
 };
 
 struct MapDescription {
   int request_id;
-  // std::string svg_map;
+  std::string svg_map;
 };
 
 using Result = std::variant<
